@@ -1,0 +1,270 @@
+-- 115 - NATIONAL v5: THE PARTNER'S PLATES AND DRIVER ON THE TRIP, FREE TEXT (owner 25/11/2026, "Yes, on the trip").
+-- In the entry test of 25/11 two trucks of the same partner on one day were two rows with nothing to tell them apart:
+-- a PARTNER trip had only partner_id + partner_rate. The owner chose free text on the national trip itself, two fields
+-- "Plates" and "Driver" under the company in the assignment form, shown on the board row. NOT a catalogue of partner
+-- vehicles. (International orders already keep the same idea as free text: orders.partner_truck_plates.)
+-- DRAFT. The owner runs it in the Supabase SQL editor AFTER 15:00, with an explicit yes, one step at a time:
+--   1. 115_rt_partner_plates_dryrun.sql   this block + its report, then a deliberate error: NOTHING kept
+--   2. 115_rt_partner_plates.sql          (this file)
+--   3. 115_rt_partner_plates_verify.sql   read-only, one row, every column true
+-- No Worker change: PATCH /plan/rt/:id and POST /plan/legs hand their bodies to plan_rt_update / plan_rt_create as
+-- they are, and GET /plan/board forwards plan_board's answer. The front end shows the two fields only while
+-- plan_board names the keys, so it may be merged before or after this file.
+-- ASCII only. ONE DO block = ONE statement: an error anywhere undoes all of it.
+--
+-- WHAT IT CHANGES (counted 25/11 by SELECT: ct_round_trips has no plates / partner-driver column)
+--   PART 1  ct_round_trips.partner_plates (<= 40) and partner_driver (<= 80): text, NULL allowed, no default (catalogue
+--           only, no rewrite). CHECK rt_partner_text_shape: trimmed, not blank, sane length, one line. CHECK
+--           rt_partner_text_partner: only on a PARTNER trip. Nothing is back-filled: every row NULL after it.
+--   PART 2  rt_partner_text_follow(), BEFORE UPDATE OF trip_type, partner_id: the trip that becomes OWNED loses both
+--           texts; the trip whose partner changes loses the text the same statement does not set (another company's
+--           plates are not this one's). Every path (plan_*, the segment copy, the old Weekly) meets it, so CHECK
+--           rt_partner_text_partner never refuses a change of vehicle (principle 4: the rule as low as it holds).
+--           B-54 (the auditor's count of live public triggers) follows by one in the same transaction.
+--   PART 3  plan_h_partner_text(obj, key, max): the one reading of a text key (string or null, else bad_input; spaces
+--           folded, blank = null, too long = bad_input key:length). No EXECUTE for anon / authenticated / PUBLIC.
+--   PART 4  live text + hunks: plan_rt_update takes "set": {partner_plates, partner_driver} (a present key wins, even
+--           null), after the vehicle, on a PARTNER trip, with an audit row; plan_rt_create takes them in "new_rt" (the
+--           POST /plan/legs of a new partner trip); plan_board names both on every cycle.
+--   PART 5  proofs: the md5 of every generated text, rights and SECURITY DEFINER kept, the Worker can EXECUTE, this
+--           week's board reads and every cycle names both keys.
+-- RUNTIME: two ADD COLUMN (catalogue only), two ADD CONSTRAINT (one scan of ct_round_trips, ~1.2k rows), one trigger,
+-- three function texts, one board read. A short lock on ct_round_trips, lock_timeout 5s.
+-- REVERSE: 115_rt_partner_plates_rollback.sql (texts back, trigger and helper gone, columns dropped; refuses while a
+-- row holds a text, so nothing typed is lost in silence).
+-- EXPECTED: NOTICE "115 OK: ..."; then verify: every column true.
+
+DO $do$
+DECLARE
+  -- ===== CONSTANTS (115) - the dry run, the rollback and verify read this block, never a copy =====
+  -- the live texts read 25/11/2026 (SELECT md5(prosrc)); the PGlite copy rebuilt from the migrations holds the same
+  m_upd_live CONSTANT text := 'b005474aae99761ea71473d085ffc053';
+  m_cre_live CONSTANT text := '7e6abee9852b952a1de922d0dbc794bf';
+  m_brd_live CONSTANT text := '6ee19458d60e62de1492fa72edec36c8';
+  -- the texts 115 writes (measured on the PGlite copy: tms-auditor/test/plan-115.test.mjs)
+  m_upd_gen CONSTANT text := '23d63e24988a1a114557b4ac4353b69d';
+  m_cre_gen CONSTANT text := 'b61a475bbd24af75597165a0606a9354';
+  m_brd_gen CONSTANT text := '51e87eb3ba7731c23e47807f5ef21d2f';
+  u0_a CONSTANT text := $h$  v_rate2 numeric;  -- 089: the ANODOS part of the partner fee (owner 31/10, 1/11)
+$h$;
+  u0_b CONSTANT text := $h$  v_rate2 numeric;  -- 089: the ANODOS part of the partner fee (owner 31/10, 1/11)
+  v_pl text; v_pd text;  -- 115: the partner's plates and driver, free text (owner 25/11)
+$h$;
+  u1_a CONSTANT text := $h$'partner_rate_anodos'], 'set');$h$;
+  u1_b CONSTANT text := $h$'partner_rate_anodos', 'partner_plates', 'partner_driver'], 'set');$h$;
+  u2_a CONSTANT text := $h$    -- 5. one truck, one driver at a time, on the window after the change
+$h$;
+  u2_b CONSTANT text := $h$    -- 115 (owner 25/11): the partner's plates and driver, free text on the trip. A present key wins, even null
+    -- (not known); a blank is null. AFTER the vehicle: a partner change above has just emptied the other company's
+    -- text (trigger rt_partner_text_follow) and this writes the new one. Only on a PARTNER trip: CHECK
+    -- rt_partner_text_partner is the rule, this says it first, in a dry run too.
+    if v_set ?| array['partner_plates', 'partner_driver'] then
+      if v_type <> 'PARTNER' then perform plan_h_raise('bad_input', 'partner_plates on OWNED'); end if;
+      v_pl := plan_h_partner_text(v_set, 'partner_plates', 40);
+      v_pd := plan_h_partner_text(v_set, 'partner_driver', 80);
+      select to_jsonb(c) into v_old from ct_round_trips c where c.id = v_rt;
+      update ct_round_trips
+         set partner_plates = case when v_set ? 'partner_plates' then v_pl else partner_plates end,
+             partner_driver = case when v_set ? 'partner_driver' then v_pd else partner_driver end
+       where id = v_rt
+         and (partner_plates, partner_driver) is distinct from
+             (case when v_set ? 'partner_plates' then v_pl else partner_plates end,
+              case when v_set ? 'partner_driver' then v_pd else partner_driver end);
+      if found then
+        perform plan_h_audit(p_actor, p_role, 'update', 'ct_round_trips', v_rt::text, v_old,
+                             (select to_jsonb(c) from ct_round_trips c where c.id = v_rt));
+      end if;
+    end if;
+    -- 5. one truck, one driver at a time, on the window after the change
+$h$;
+  c0_a CONSTANT text := $h$  v_later boolean;  -- 083: a load born without a vehicle (owner 31/10)
+$h$;
+  c0_b CONSTANT text := $h$  v_later boolean;  -- 083: a load born without a vehicle (owner 31/10)
+  v_pl text; v_pd text;  -- 115: the partner's plates and driver, free text (owner 25/11)
+$h$;
+  c1_a CONSTANT text := $h$'partner_rate', 'later'], 'new_rt');$h$;
+  c1_b CONSTANT text := $h$'partner_rate', 'later', 'partner_plates', 'partner_driver'], 'new_rt');$h$;
+  c2_a CONSTANT text := $h$  v_rt := nextval(pg_get_serial_sequence('public.ct_round_trips', 'id'));
+$h$;
+  c2_b CONSTANT text := $h$  -- 115 (owner 25/11): the partner's plates and driver, free text, only on a PARTNER trip (the words before CHECK
+  -- rt_partner_text_partner); a blank is null
+  v_pl := plan_h_partner_text(nr, 'partner_plates', 40);
+  v_pd := plan_h_partner_text(nr, 'partner_driver', 80);
+  if v_type <> 'PARTNER' and (v_pl is not null or v_pd is not null) then
+    perform plan_h_raise('bad_input', 'partner_plates on OWNED');
+  end if;
+  v_rt := nextval(pg_get_serial_sequence('public.ct_round_trips', 'id'));
+$h$;
+  c3_a CONSTANT text := $h$driver_id, partner_id, partner_rate,
+                              date_start$h$;
+  c3_b CONSTANT text := $h$driver_id, partner_id, partner_rate,
+                              partner_plates, partner_driver,
+                              date_start$h$;
+  c4_a CONSTANT text := $h$v_driver, v_partner, v_rate,
+$h$;
+  c4_b CONSTANT text := $h$v_driver, v_partner, v_rate, v_pl, v_pd,
+$h$;
+  b1_a CONSTANT text := $h$jsonb_build_object('partner_rate', r.partner_rate, 'segments', plan_h_seg_json(vc.rt_id))$h$;
+  b1_b CONSTANT text := $h$jsonb_build_object('partner_rate', r.partner_rate, 'segments', plan_h_seg_json(vc.rt_id),
+                                  -- 115 (owner 25/11): the partner's plates and driver, free text on the trip
+                                  'partner_plates', r.partner_plates, 'partner_driver', r.partner_driver)$h$;
+  -- ===== END CONSTANTS =====
+  p pg_proc%rowtype; v_new text; v_trg0 int; v_trg1 int; v_k int; v_cyc int; v_ok int; v_rows bigint;
+  v_t0 timestamptz := clock_timestamp();
+BEGIN
+  PERFORM set_config('lock_timeout', '5s', true);
+  PERFORM set_config('search_path', 'public', true);
+  PERFORM set_config('statement_timeout', '10min', true);   -- the proof reads this week's board
+
+  -- ===== PART 0: GUARDS (nothing written before them) =====
+  IF to_regclass('public.ct_round_trips') IS NULL THEN
+    RAISE EXCEPTION '115: public.ct_round_trips does not exist - wrong database?';
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'ct_round_trips'
+               AND column_name IN ('partner_plates', 'partner_driver')) THEN
+    RAISE EXCEPTION '115: ct_round_trips.partner_plates / partner_driver already exist - 115 has run, nothing to do';
+  END IF;
+  IF to_regprocedure('public.plan_h_partner_text(jsonb,text,integer)') IS NOT NULL
+     OR to_regprocedure('public.rt_partner_text_follow()') IS NOT NULL
+     OR EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'public.ct_round_trips'::regclass
+                  AND conname IN ('rt_partner_text_shape', 'rt_partner_text_partner')) THEN
+    RAISE EXCEPTION '115: a function or CHECK of 115 exists without its columns - stop, look before running';
+  END IF;
+  IF (SELECT md5(prosrc) FROM pg_proc WHERE oid = to_regprocedure('public.plan_rt_update(jsonb,text,text)')) IS DISTINCT FROM m_upd_live
+     OR (SELECT md5(prosrc) FROM pg_proc WHERE oid = to_regprocedure('public.plan_rt_create(jsonb,text,text)')) IS DISTINCT FROM m_cre_live
+     OR (SELECT md5(prosrc) FROM pg_proc WHERE oid = to_regprocedure('public.plan_board(date,text)')) IS DISTINCT FROM m_brd_live THEN
+    RAISE EXCEPTION '115: plan_rt_update / plan_rt_create / plan_board is not the text 115 patches (110 / 099 / 112) - stop';
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_proc WHERE oid IN ('public.plan_rt_update(jsonb,text,text)'::regprocedure,
+               'public.plan_rt_create(jsonb,text,text)'::regprocedure, 'public.plan_board(date,text)'::regprocedure)
+               AND (proconfig IS DISTINCT FROM ARRAY['search_path=public']
+                    OR prolang <> (SELECT oid FROM pg_language WHERE lanname = 'plpgsql'))) THEN
+    RAISE EXCEPTION '115: a patched function is not plpgsql with search_path=public - stop';
+  END IF;
+  SELECT count(*) INTO v_trg0 FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace n ON n.oid = c.relnamespace
+   WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND n.nspname = 'public';
+  IF NOT EXISTS (SELECT 1 FROM monitoring.checks WHERE id = 'B-54' AND red_value::int = v_trg0 AND baseline IS NULL) THEN
+    RAISE EXCEPTION '115: B-54 red_value is not the live trigger count % - re-measure', v_trg0;
+  END IF;
+
+  -- ===== PART 1: THE COLUMNS =====
+  ALTER TABLE public.ct_round_trips ADD COLUMN partner_plates text NULL, ADD COLUMN partner_driver text NULL;
+  -- trimmed, one line, not blank, sane length: plan_h_partner_text writes nothing else; another writer meets it here
+  ALTER TABLE public.ct_round_trips ADD CONSTRAINT rt_partner_text_shape CHECK (
+    (partner_plates IS NULL OR (partner_plates = btrim(partner_plates) AND partner_plates <> ''
+                                AND length(partner_plates) <= 40 AND partner_plates !~ '[[:cntrl:]]'))
+    AND (partner_driver IS NULL OR (partner_driver = btrim(partner_driver) AND partner_driver <> ''
+                                    AND length(partner_driver) <= 80 AND partner_driver !~ '[[:cntrl:]]')));
+  ALTER TABLE public.ct_round_trips ADD CONSTRAINT rt_partner_text_partner CHECK (
+    (partner_plates IS NULL AND partner_driver IS NULL) OR trip_type = 'PARTNER');
+  COMMENT ON COLUMN public.ct_round_trips.partner_plates IS
+    '115 (owner 25/11/2026): the partner truck plates as the dispatcher typed them, free text, PARTNER trips only; NULL = not known';
+  COMMENT ON COLUMN public.ct_round_trips.partner_driver IS
+    '115 (owner 25/11/2026): the partner driver as the dispatcher typed it, free text, PARTNER trips only; NULL = not known';
+
+  -- ===== PART 2: THE TEXT FOLLOWS THE COMPANY =====
+  CREATE FUNCTION public.rt_partner_text_follow() RETURNS trigger LANGUAGE plpgsql SET search_path = public AS $f$
+begin
+  -- 115 (owner 25/11): the plates and driver belong to one company's truck. An OWNED trip has none; a trip whose
+  -- partner changes keeps only what the same statement writes (plan_rt_update writes the new text after the vehicle)
+  if new.trip_type is distinct from 'PARTNER' then
+    new.partner_plates := null;
+    new.partner_driver := null;
+  elsif new.partner_id is distinct from old.partner_id then
+    if new.partner_plates is not distinct from old.partner_plates then new.partner_plates := null; end if;
+    if new.partner_driver is not distinct from old.partner_driver then new.partner_driver := null; end if;
+  end if;
+  return new;
+end
+$f$;
+  CREATE TRIGGER rt_partner_text_follow BEFORE UPDATE OF trip_type, partner_id ON public.ct_round_trips
+    FOR EACH ROW WHEN (old.trip_type IS DISTINCT FROM new.trip_type OR old.partner_id IS DISTINCT FROM new.partner_id)
+    EXECUTE FUNCTION public.rt_partner_text_follow();
+  REVOKE ALL ON FUNCTION public.rt_partner_text_follow() FROM PUBLIC, anon, authenticated;
+  SELECT count(*) INTO v_trg1 FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace n ON n.oid = c.relnamespace
+   WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND n.nspname = 'public';
+  IF v_trg1 <> v_trg0 + 1 THEN RAISE EXCEPTION '115: triggers % -> %, expected one more', v_trg0, v_trg1; END IF;
+  UPDATE monitoring.checks SET red_value = v_trg1 WHERE id = 'B-54' AND red_value::int = v_trg0;
+  GET DIAGNOSTICS v_k = ROW_COUNT;
+  IF v_k <> 1 THEN RAISE EXCEPTION '115: B-54 not updated (% rows)', v_k; END IF;
+
+  -- ===== PART 3: ONE READING OF A TEXT KEY =====
+  CREATE FUNCTION public.plan_h_partner_text(p_obj jsonb, p_key text, p_max integer) RETURNS text
+    LANGUAGE plpgsql STABLE SET search_path = public AS $f$
+declare v text;
+begin
+  -- 115: absent or null = null; a string, its spaces (tabs, line breaks) folded to one, trimmed, blank = null; any
+  -- other JSON type is refused, never stored as its JSON text. The detail names the key only (ASCII, plan_h_raise).
+  if p_obj is null or not (p_obj ? p_key) or jsonb_typeof(p_obj->p_key) = 'null' then return null; end if;
+  if jsonb_typeof(p_obj->p_key) <> 'string' then perform plan_h_raise('bad_input', p_key); end if;
+  v := nullif(btrim(regexp_replace(p_obj->>p_key, '[[:space:][:cntrl:]]+', ' ', 'g')), '');
+  if length(v) > p_max then perform plan_h_raise('bad_input', p_key || ':length'); end if;
+  return v;
+end
+$f$;
+  REVOKE ALL ON FUNCTION public.plan_h_partner_text(jsonb, text, integer) FROM PUBLIC, anon, authenticated;
+
+  -- ===== PART 4: LIVE TEXT + HUNKS =====
+  -- each hunk exactly once in its live text, the generated text the one measured; CREATE OR REPLACE keeps the oid,
+  -- owner and grants; SECURITY DEFINER and volatility as they were
+  FOR p IN SELECT * FROM pg_proc WHERE oid IN ('public.plan_rt_update(jsonb,text,text)'::regprocedure,
+             'public.plan_rt_create(jsonb,text,text)'::regprocedure, 'public.plan_board(date,text)'::regprocedure) LOOP
+    v_new := p.prosrc;
+    IF p.proname = 'plan_rt_update' THEN
+      IF (length(v_new) - length(replace(v_new, u0_a, ''))) <> length(u0_a) OR (length(v_new) - length(replace(v_new, u1_a, ''))) <> length(u1_a)
+         OR (length(v_new) - length(replace(v_new, u2_a, ''))) <> length(u2_a) THEN
+        RAISE EXCEPTION '115: a hunk of plan_rt_update is not in its text exactly once - stop';
+      END IF;
+      v_new := replace(replace(replace(v_new, u0_a, u0_b), u1_a, u1_b), u2_a, u2_b);
+      IF md5(v_new) <> m_upd_gen THEN RAISE EXCEPTION '115: plan_rt_update generated md5 % is not the one measured - stop', md5(v_new); END IF;
+    ELSIF p.proname = 'plan_rt_create' THEN
+      IF (length(v_new) - length(replace(v_new, c0_a, ''))) <> length(c0_a) OR (length(v_new) - length(replace(v_new, c1_a, ''))) <> length(c1_a)
+         OR (length(v_new) - length(replace(v_new, c2_a, ''))) <> length(c2_a) OR (length(v_new) - length(replace(v_new, c3_a, ''))) <> length(c3_a)
+         OR (length(v_new) - length(replace(v_new, c4_a, ''))) <> length(c4_a) THEN
+        RAISE EXCEPTION '115: a hunk of plan_rt_create is not in its text exactly once - stop';
+      END IF;
+      v_new := replace(replace(replace(replace(replace(v_new, c0_a, c0_b), c1_a, c1_b), c2_a, c2_b), c3_a, c3_b), c4_a, c4_b);
+      IF md5(v_new) <> m_cre_gen THEN RAISE EXCEPTION '115: plan_rt_create generated md5 % is not the one measured - stop', md5(v_new); END IF;
+    ELSE
+      IF (length(v_new) - length(replace(v_new, b1_a, ''))) <> length(b1_a) THEN
+        RAISE EXCEPTION '115: the hunk of plan_board is not in its text exactly once - stop';
+      END IF;
+      v_new := replace(v_new, b1_a, b1_b);
+      IF md5(v_new) <> m_brd_gen THEN RAISE EXCEPTION '115: plan_board generated md5 % is not the one measured - stop', md5(v_new); END IF;
+    END IF;
+    EXECUTE format('CREATE OR REPLACE FUNCTION public.%I(%s) RETURNS %s LANGUAGE plpgsql %s %s SET search_path = public AS %L',
+      p.proname, pg_get_function_arguments(p.oid), pg_get_function_result(p.oid),
+      CASE p.provolatile WHEN 'i' THEN 'IMMUTABLE' WHEN 's' THEN 'STABLE' ELSE 'VOLATILE' END,
+      CASE WHEN p.prosecdef THEN 'SECURITY DEFINER' ELSE 'SECURITY INVOKER' END, v_new);
+    IF (SELECT proacl::text FROM pg_proc WHERE oid = p.oid) IS DISTINCT FROM p.proacl::text
+       OR (SELECT prosecdef FROM pg_proc WHERE oid = p.oid) IS DISTINCT FROM p.prosecdef THEN
+      RAISE EXCEPTION '115 proof: % lost its rights or its SECURITY DEFINER', p.proname;
+    END IF;
+  END LOOP;
+
+  -- ===== PART 5: PROOFS =====
+  IF (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.plan_rt_update(jsonb,text,text)'::regprocedure) <> m_upd_gen
+     OR (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.plan_rt_create(jsonb,text,text)'::regprocedure) <> m_cre_gen
+     OR (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.plan_board(date,text)'::regprocedure) <> m_brd_gen THEN
+    RAISE EXCEPTION '115 proof: a patched function does not hold its generated text';
+  END IF;
+  IF NOT has_function_privilege('service_role', 'public.plan_rt_update(jsonb,text,text)', 'EXECUTE')
+     OR NOT has_function_privilege('service_role', 'public.plan_board(date,text)', 'EXECUTE') THEN
+    RAISE EXCEPTION '115 proof: the Worker lost EXECUTE on plan_rt_update / plan_board';
+  END IF;
+  IF has_function_privilege('anon', 'public.plan_h_partner_text(jsonb,text,integer)', 'EXECUTE')
+     OR has_function_privilege('anon', 'public.rt_partner_text_follow()', 'EXECUTE') THEN
+    RAISE EXCEPTION '115 proof: anon can EXECUTE a new function of 115';
+  END IF;
+  -- this week's board still reads, and every cycle in it names both keys (null until someone types them)
+  SELECT count(*), count(*) FILTER (WHERE c ? 'partner_plates' AND c ? 'partner_driver') INTO v_cyc, v_ok
+    FROM (SELECT public.plan_board((now() AT TIME ZONE 'Europe/Athens')::date
+            - ((extract(isodow from (now() AT TIME ZONE 'Europe/Athens')::date)::int + 1) % 7), 'dispatcher') AS b) q,
+         jsonb_array_elements(q.b->'cycles') c;
+  IF v_cyc <> v_ok THEN RAISE EXCEPTION '115 proof: % cycles on this week''s board, % name the two keys', v_cyc, v_ok; END IF;
+  SELECT count(*) INTO v_rows FROM public.ct_round_trips;
+  -- PostgREST (the Worker's door) learns the new columns at commit, not at its next restart
+  PERFORM pg_notify('pgrst', 'reload schema');
+  RAISE NOTICE '115 OK: ct_round_trips.partner_plates / partner_driver added, % rows all NULL; triggers % -> %, B-54 = %; % cycles on this week''s board name both keys; % ms',
+    v_rows, v_trg0, v_trg1, v_trg1, v_cyc, round(extract(epoch FROM clock_timestamp() - v_t0) * 1000);
+END $do$;
