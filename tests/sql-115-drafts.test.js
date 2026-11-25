@@ -4,7 +4,7 @@
 //   - every file and the builder are there; ASCII only; the writing files are ONE DO block; verify only reads;
 //   - the generated dry runs, rollback and verify have 0 drift (the rollback declares 115's own constants block);
 //   - one md5 per fact: the generated md5 of the source = verify = the dry run's header; the live md5 = the rollback
-//     dry run's header (= production 25/11, plan_rt_update after 110, plan_rt_create after 099, plan_board after 112);
+//     dry run's header (production 25/11: plan_rt_update after 110, plan_rt_create after 099; plan_board after 114);
 //   - 115 adds two columns, two CHECKs, one trigger and two functions, patches only its three, grants nothing.
 // The rules are proven on PGlite by tms-auditor/test/plan-115.test.mjs (dry run, GO, refusals, the text follows the
 // company, rollback).
@@ -49,9 +49,10 @@ test('115: one md5 per fact - generated = verify = the dry run; live = the rollb
   const src = read(`${P}.sql`);
   const gen = ['m_upd_gen', 'm_cre_gen', 'm_brd_gen'].map((k) => md5(k, src));
   const live = ['m_upd_live', 'm_cre_live', 'm_brd_live'].map((k) => md5(k, src));
-  assert.deepStrictEqual(live, ['b005474aae99761ea71473d085ffc053', '7e6abee9852b952a1de922d0dbc794bf', '6ee19458d60e62de1492fa72edec36c8']);
-  // 112 (executed 8/11) left plan_board on this md5 and says the next change guards on it
-  assert.ok(read('112_plan_board_local_truck.sql').includes(live[2]));
+  // plan_rt_update / plan_rt_create as production 25/11; plan_board as 114 leaves it (115 runs after 114, one chain)
+  assert.deepStrictEqual(live, ['b005474aae99761ea71473d085ffc053', '7e6abee9852b952a1de922d0dbc794bf', '810f110372c1908b061bcd527257d04c']);
+  const p114 = ['drafts/', ''].map((d) => path.join(ROOT, 'worker/migrations', d + '114_plan_split_at_loading.sql')).find((f) => fs.existsSync(f));
+  if (p114) assert.ok(fs.readFileSync(p114, 'utf8').includes(`'${live[2]}'`), '114 generates the plan_board text 115 guards on');
   for (const m of gen) {
     assert.ok(read(`${P}_verify.sql`).includes(m), 'verify reads the generated md5');
     assert.ok(head(`${P}_dryrun.sql`).includes(m), 'the dry run header expects it');

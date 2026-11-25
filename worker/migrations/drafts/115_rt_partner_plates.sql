@@ -3,7 +3,8 @@
 -- a PARTNER trip had only partner_id + partner_rate. The owner chose free text on the national trip itself, two fields
 -- "Plates" and "Driver" under the company in the assignment form, shown on the board row. NOT a catalogue of partner
 -- vehicles. (International orders already keep the same idea as free text: orders.partner_truck_plates.)
--- DRAFT. The owner runs it in the Supabase SQL editor AFTER 15:00, with an explicit yes, one step at a time:
+-- DRAFT. AFTER 114 (it guards on the plan_board text 114 leaves). The owner runs it in the Supabase SQL editor AFTER
+-- 15:00, with an explicit yes, one step at a time:
 --   1. 115_rt_partner_plates_dryrun.sql   this block + its report, then a deliberate error: NOTHING kept
 --   2. 115_rt_partner_plates.sql          (this file)
 --   3. 115_rt_partner_plates_verify.sql   read-only, one row, every column true
@@ -40,11 +41,12 @@ DECLARE
   -- the live texts read 25/11/2026 (SELECT md5(prosrc)); the PGlite copy rebuilt from the migrations holds the same
   m_upd_live CONSTANT text := 'b005474aae99761ea71473d085ffc053';
   m_cre_live CONSTANT text := '7e6abee9852b952a1de922d0dbc794bf';
-  m_brd_live CONSTANT text := '6ee19458d60e62de1492fa72edec36c8';
+  -- plan_board: the text 114 leaves (112's 6ee19458 + 114's parent_piece_id hunk): 115 runs AFTER 114 (one chain)
+  m_brd_live CONSTANT text := '810f110372c1908b061bcd527257d04c';
   -- the texts 115 writes (measured on the PGlite copy: tms-auditor/test/plan-115.test.mjs)
   m_upd_gen CONSTANT text := '23d63e24988a1a114557b4ac4353b69d';
   m_cre_gen CONSTANT text := 'b61a475bbd24af75597165a0606a9354';
-  m_brd_gen CONSTANT text := '51e87eb3ba7731c23e47807f5ef21d2f';
+  m_brd_gen CONSTANT text := 'ae355c60a2312ed0aa2b850a490de1c0';
   u0_a CONSTANT text := $h$  v_rate2 numeric;  -- 089: the ANODOS part of the partner fee (owner 31/10, 1/11)
 $h$;
   u0_b CONSTANT text := $h$  v_rate2 numeric;  -- 089: the ANODOS part of the partner fee (owner 31/10, 1/11)
@@ -133,7 +135,7 @@ BEGIN
   IF (SELECT md5(prosrc) FROM pg_proc WHERE oid = to_regprocedure('public.plan_rt_update(jsonb,text,text)')) IS DISTINCT FROM m_upd_live
      OR (SELECT md5(prosrc) FROM pg_proc WHERE oid = to_regprocedure('public.plan_rt_create(jsonb,text,text)')) IS DISTINCT FROM m_cre_live
      OR (SELECT md5(prosrc) FROM pg_proc WHERE oid = to_regprocedure('public.plan_board(date,text)')) IS DISTINCT FROM m_brd_live THEN
-    RAISE EXCEPTION '115: plan_rt_update / plan_rt_create / plan_board is not the text 115 patches (110 / 099 / 112) - stop';
+    RAISE EXCEPTION '115: plan_rt_update / plan_rt_create / plan_board is not the text 115 patches (110 / 099 / 114) - run 114 first - stop';
   END IF;
   IF EXISTS (SELECT 1 FROM pg_proc WHERE oid IN ('public.plan_rt_update(jsonb,text,text)'::regprocedure,
                'public.plan_rt_create(jsonb,text,text)'::regprocedure, 'public.plan_board(date,text)'::regprocedure)

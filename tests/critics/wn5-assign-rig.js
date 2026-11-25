@@ -1034,8 +1034,10 @@ async function partner_text({ browser, origin, ok, scn, shots }) {
   ok(scn, 'new_rt PARTNER 51, rate 300, plates «TST-P 101», driver «Driver P1» (trimmed, spaces folded)', w.length === 1
     && JSON.stringify(w[0].body.target.new_rt) === JSON.stringify({ trip_type: 'PARTNER', partner_id: 51, partner_rate: 300, partner_plates: 'TST-P 101', partner_driver: 'Driver P1' }), w.map((x) => x.raw));
   await page.context().close();
-
-  // the vehicle form of a partner trip: prefilled, save off until a change, both keys sent; another company empties them
+}
+// the board row and the vehicle form of a partner trip: prefilled, save off until a change, both keys sent
+async function partner_text_board({ browser, origin, ok, scn, shots }) {
+  let page, S, w;
   const pb = partnerBoard(null);
   for (const c of pb.cycles) for (const g of c.segments) delete g.partner_rate_anodos;   // one fee field (before 089's key)
   withPtx(pb, { 101: { partner_plates: 'TST-P 111' }, 102: { partner_plates: 'TST-P 222', partner_driver: 'Driver P2' } });
@@ -1069,5 +1071,5 @@ async function partner_text({ browser, origin, ok, scn, shots }) {
   await page.context().close();
 }
 
-K.run({ scenarios: { own_new, own_join, only_hours, partner, accept_busy, vehicle, rate2, handover, veroia_list, veroia_new, f61, f54, veroia_later, pr3b, veroia_busy, veroia_fixes, busy3, fit, sotiris_late, sotiris_warn, sotiris_esc, sotiris_hub_after, rt_expect, partner_text }, globals: ['WN5', 'WN5Act', 'WN5Assign', 'WN5Hand'],
+K.run({ scenarios: { own_new, own_join, only_hours, partner, accept_busy, vehicle, rate2, handover, veroia_list, veroia_new, f61, f54, veroia_later, pr3b, veroia_busy, veroia_fixes, busy3, fit, sotiris_late, sotiris_warn, sotiris_esc, sotiris_hub_after, rt_expect, partner_text, partner_text_board }, globals: ['WN5', 'WN5Act', 'WN5Assign', 'WN5Hand'],
   go: 'the assignment form (own new / join / only / hours / F39 / partner / vehicle / F51-F61 / F54 / F56 / 089 two fees), ✈ «Αλλαγή οχήματος…» and the Veroia board v2 «Νέο φορτίο» hold' });

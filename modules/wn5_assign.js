@@ -646,7 +646,8 @@
     const rateAv = rateBad || _sumAv(st);
     const bad2 = pb.fields.rate2, av2 = bad2 || pb.soft.rate2 || '';
     h += '<div class="wn5a-sec"><div class="wi-pop-section-lbl">ΣΥΝΕΡΓΑΤΗΣ</div><div class="wi-pop-row">' + _fieldHTML(st, 'pt', pb)
-      + _ptxHTML(st, joinPar ? tg.cyc : null)
+      // rule 6b: the company alone on its line (four fields side by side cut its name), plates · driver · fee under it
+      + (st.ptx ? '</div><div class="wi-pop-row">' + _ptxHTML(st, joinPar ? tg.cyc : null) : '')
       + '<div class="wi-pop-field wn5a-f wn5a-rate' + (rateBad ? ' wn5a-bad' : '') + '" data-f="rate"><span class="wi-pop-lbl">' + rateLbl + '</span>'
       + '<input class="wi-pop-inp" data-rate inputmode="decimal" placeholder="0.00" value="' + _e(rateVal) + '"' + (joinPar ? ' disabled' : '') + ' aria-label="' + rateLbl + '">'
       + '<span class="wn5a-av' + (rateBad ? ' bad' : '') + '">' + _e(rateAv) + '</span></div>'

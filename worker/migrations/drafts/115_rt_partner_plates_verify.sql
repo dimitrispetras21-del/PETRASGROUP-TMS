@@ -3,7 +3,7 @@
 SELECT
   (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.plan_rt_update(jsonb,text,text)'::regprocedure) = '23d63e24988a1a114557b4ac4353b69d' AS upd_ok,
   (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.plan_rt_create(jsonb,text,text)'::regprocedure) = 'b61a475bbd24af75597165a0606a9354' AS cre_ok,
-  (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.plan_board(date,text)'::regprocedure) = '51e87eb3ba7731c23e47807f5ef21d2f' AS brd_ok,
+  (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.plan_board(date,text)'::regprocedure) = 'ae355c60a2312ed0aa2b850a490de1c0' AS brd_ok,
   (SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'ct_round_trips'
      AND column_name IN ('partner_plates', 'partner_driver')) = 2 AS columns_ok,
   (SELECT count(*) FROM pg_constraint WHERE conrelid = 'public.ct_round_trips'::regclass

@@ -25,6 +25,36 @@ const SINCE_093 = ['095_plan_small_relaxed.sql', '096_plan_handover_accept_busy.
   '098_plan_transfer_point.sql', '099_plan_transfer.sql', '102_plan_drafts.sql', '109_plan_board_intl_trips.sql',
   '110_plan_rt_expect_change.sql', '112_plan_board_local_truck.sql'];
 
+// 115 runs AFTER 114 (wn5-split-at-loading, 25/11), which patches plan_board too: 115 guards on the text 114 leaves.
+// 114's own file when it is in the tree; until its PR is merged, its ONE plan_board hunk (copied from 114's source,
+// the parent_piece_id line of waiting[]) - the text, and so its md5, is 114's own (asserted). Once 114 is in the tree
+// the copy below is never read; delete it then.
+const H114_A = "               'is_stock', ps.is_stock, 'client_id', vs.client_id, 'client', cl.company_name, 'reference', vs.reference,\n";
+const H114_B = H114_A + "               -- 114: a part of a split (its own line on the screen, assigned alone)\n               'parent_piece_id', ps.parent_piece_id,\n";
+const BOARD_114 = '810f110372c1908b061bcd527257d04c';
+async function as114(db) {
+  let real = null;
+  try { real = migrationFile('114_plan_split_at_loading.sql'); } catch (_) { real = null; }
+  if (real && fs.existsSync(real)) await db.exec(read('114_plan_split_at_loading.sql'));
+  else {
+    const p = await one(db, `SELECT prosrc FROM pg_proc WHERE oid = '${SIG.brd}'::regprocedure`);
+    if (p.prosrc.split(H114_A).length !== 2) throw new Error('as114: the 114 anchor is not in plan_board exactly once');
+    // the way the migrations replace a text (prod-shaped-093): same arguments, result, volatility and security
+    await db.exec(`CREATE FUNCTION pg_temp.t115_set(p_src text) RETURNS void LANGUAGE plpgsql AS $t$
+      declare p pg_proc%rowtype;
+      begin
+        select * into p from pg_proc where oid = 'public.plan_board(date,text)'::regprocedure;
+        execute format('CREATE OR REPLACE FUNCTION public.plan_board(%s) RETURNS %s LANGUAGE plpgsql %s %s SET search_path = public AS %L',
+          pg_get_function_arguments(p.oid), pg_get_function_result(p.oid),
+          case p.provolatile when 'i' then 'IMMUTABLE' when 's' then 'STABLE' else 'VOLATILE' end,
+          case when p.prosecdef then 'SECURITY DEFINER' else 'SECURITY INVOKER' end, p_src);
+      end $t$`);
+    await db.query('SELECT pg_temp.t115_set($1)', [p.prosrc.replace(H114_A, () => H114_B)]);
+  }
+  const m = (await one(db, `SELECT md5(prosrc) AS m FROM pg_proc WHERE oid = '${SIG.brd}'::regprocedure`)).m;
+  if (m !== BOARD_114) throw new Error(`as114: plan_board is not 114's text (md5 ${m})`);
+}
+
 // test rows only: TEST 115 ... names, T115- references; a national load of 10 pallets on Mon 7/12
 const HELPERS = `
 CREATE SEQUENCE t115_n;
@@ -94,6 +124,7 @@ const boardCycle = async (db, rt) => {
 test('115 on the production-shaped copy (25/11): before, dry run, GO, the rules, rollback', async (t) => {
   const db = await prodShaped093();
   for (const f of SINCE_093) await db.exec(read(f));
+  await as114(db);
   await db.exec(HELPERS);
   // B-54 = the copy's own trigger count, as production's red_value is production's (115 guards on it)
   await db.exec(`UPDATE monitoring.checks SET red_value = (${TRG}), baseline = NULL WHERE id = 'B-54'`);
