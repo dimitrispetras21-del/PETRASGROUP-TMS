@@ -1405,7 +1405,10 @@ function _boxHTML(t, r) {
   // Ε1 (owner 2/11): a part in a draft of «Σύνθεση φορτίων» stays this row, with a small grey «σε πρόχειρο» (filled
   // by WN5Compose from GET /plan/drafts; '' while its flag is off)
   if (t.type === 'un') return '<button type="button" class="wi4-box un" data-act="assign" title="Ανάθεση οχήματος"><span class="wi4-l1">ΠΡΟΣ ΑΝΑΘΕΣΗ</span></button>'
-    + (typeof WN5Compose !== 'undefined' ? WN5Compose.markHTML(r && r.pieceIds) : '');
+    + (typeof WN5Compose !== 'undefined' ? WN5Compose.markHTML(r && r.pieceIds) : '')
+    // 114 (owner 8/11, 25/11): «⋯» → «Σπάσε…» of one load waiting at its loading point (WN5L canSplit: the base allows it)
+    + (r && r.canSplit && typeof WN5Hub !== 'undefined'
+      ? `<button type="button" class="wn5-wmore" aria-label="Περισσότερα" title="Σπάσε σε μέρη" onclick="event.stopPropagation();WN5Hub.waitMore(${_id(r.pieceIds[0])}, this)">⋯</button>` : '');
   // The tile is 28px high: a long name is cut by the wi4 rule with a visible «…» and stays whole in title. A tile with
   // nothing under the name (a partner without a plate, 2i) gives the name both lines.
   if (!t.line2) return `<span class="wi4-box ${t.type} wn5-box1"><span class="wi4-l1" title="${_esc(t.line1)}">${_esc(t.line1)}</span></span>`;

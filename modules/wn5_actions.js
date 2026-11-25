@@ -1481,7 +1481,13 @@
       if (!it) { WN5Act.strip(_boardHost(), _clientErr('piece_missing', 'Η παράδοση δεν είναι πια στο board — ανανέωσε')); return; }
       const group = it.order_id != null ? { order_id: it.order_id } : (it.nat_order_id != null ? { nat_order_id: it.nat_order_id } : null);
       const dayEl = row && row.closest('.wn5-day[data-date]');
-      WN5Act.assign(group ? { group } : { pieces: [{ piece_id: pid }] },
+      // 114: a part of a split load is its own row and goes alone; the order's other rows go without its parts
+      // (plan_put_group would take every waiting piece of the order, the parts too)
+      const parts = group ? _groupItems(group).filter((x) => x.parent_piece_id != null) : [];
+      const src = it.parent_piece_id != null ? { pieces: [{ piece_id: pid }] }
+        : parts.length ? { pieces: _groupItems(group).filter((x) => x.parent_piece_id == null).map((x) => ({ piece_id: x.piece_id })) }
+          : group ? { group } : { pieces: [{ piece_id: pid }] };
+      WN5Act.assign(src,
         // focus: the piece pressed, for «μόνο αυτές οι παλέτες» (F42); anchor: kept for the callers, the form itself is a
         // centred window since owner 3/11 (wn5_assign.js _form)
         { day: it.nat_ready_day || (dayEl && dayEl.dataset.date) || null, side: _sideFor(it), entry: card ? 'queue' : 'row', focus: pid, anchor: el });
