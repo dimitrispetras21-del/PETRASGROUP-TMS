@@ -234,7 +234,7 @@ $f$;
   IF has_function_privilege('anon', 'public.plan_h_partner_text(jsonb,text,integer)', 'EXECUTE')
      OR has_function_privilege('service_role', 'public.plan_h_partner_text(jsonb,text,integer)', 'EXECUTE')
      OR has_function_privilege('anon', 'public.rt_partner_text_follow()', 'EXECUTE') THEN
-    RAISE EXCEPTION '115 proof: anon can EXECUTE a new function of 115';
+    RAISE EXCEPTION '115 proof: anon or service_role can EXECUTE a new function of 115';
   END IF;
   -- this week's board still reads, and every cycle in it names both keys (null until someone types them)
   SELECT count(*), count(*) FILTER (WHERE c ? 'partner_plates' AND c ? 'partner_driver') INTO v_cyc, v_ok

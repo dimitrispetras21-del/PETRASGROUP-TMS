@@ -69,6 +69,7 @@
       if (!c) { st.err = k.clientErr('rt_missing', 'Δεν είναι στον πίνακα που φορτώθηκε — ανανέωσε'); return st; }
       st.cur = c;
       st.expect = k.expectOf(c);   // 110 (item 7): the change this form saw, held from the open, never refreshed under it
+      if (_multiSeg(c)) st.ptx = false;   // rule 6b: no plates on a trip with a handover
       const r = k.row(c.rt_id);
       st.day = st.day || WN5L.loadDayOf(r) || c.date_start;
       if (c.trip_type === 'PARTNER' && c.partner_id != null) {
@@ -101,9 +102,14 @@
     for (const c of st.cycles) { const r = k.row(c.rt_id); st.sidePal[c.rt_id] = { pal: k.sidePal(r, st.side), unk: k.sideUnk(r, st.side) }; }
     return st;
   }
+  // rule 6b: the limits of 115's CHECK rt_partner_text_shape, in characters (as Postgres length() counts them)
+  const PTX_MAX = Object.freeze({ ppl: 40, pdr: 80 });
+  const _chars = (s) => [...String(s || '')].length;
+  // a trip with a handover has no one partner truck: the board, the week paper and the sheet show no plates there, so
+  // the form does not take them either (code review 25/11: saved and shown nowhere)
+  const _multiSeg = (c) => !!c && Array.isArray(c.segments) && c.segments.length > 1;
   // rule 6b: the keys of plan_board after 115 — every cycle names both (null until typed); a week with no cycle cannot
   // tell, so the fields wait for one (they are given later in the trip's own «Ανάθεση»)
-  const PTX_MAX = Object.freeze({ ppl: 40, pdr: 80 });
   const _ptxOn = (cycles) => Array.isArray(cycles) && cycles.length > 0 && cycles.every((c) => c && 'partner_plates' in c && 'partner_driver' in c);
   // the base's own reading (plan_h_partner_text): spaces and line breaks folded to one, trimmed, blank = null
   const _ptxt = (v) => String(v == null ? '' : v).replace(/[\s\u0000-\u001f\u007f]+/g, ' ').trim() || null;
@@ -402,9 +408,11 @@
       if (b.ok && b.v === null) out.soft.rate2 = 'λείπει';
     } else if (st.who === 'partner' && !k.rate(st.rateTxt).ok) { out.fields.rate = 'μόνο αριθμός'; add('κόμιστρο (αριθμός)'); }
     // rule 6b: the base's limits (115 CHECK rt_partner_text_shape), said before the press, never cut in silence
-    if (st.who === 'partner' && st.ptx) {
-      if ((_ptxt(st.pplTxt) || '').length > PTX_MAX.ppl) { out.fields.ppl = 'έως ' + PTX_MAX.ppl; add('πινακίδες (έως ' + PTX_MAX.ppl + ')'); }
-      if ((_ptxt(st.pdrTxt) || '').length > PTX_MAX.pdr) { out.fields.pdr = 'έως ' + PTX_MAX.pdr; add('οδηγός συνεργάτη (έως ' + PTX_MAX.pdr + ')'); }
+    // only when they are sent: joining a partner trip sends none (its own are shown, read-only)
+    const joins = st.mode !== 'vehicle' && !!(_target(st) || {}).cyc;
+    if (st.who === 'partner' && st.ptx && !joins) {
+      if (_chars(_ptxt(st.pplTxt)) > PTX_MAX.ppl) { out.fields.ppl = 'έως ' + PTX_MAX.ppl; add('πινακίδες (έως ' + PTX_MAX.ppl + ')'); }
+      if (_chars(_ptxt(st.pdrTxt)) > PTX_MAX.pdr) { out.fields.pdr = 'έως ' + PTX_MAX.pdr; add('οδηγός συνεργάτη (έως ' + PTX_MAX.pdr + ')'); }
     }
     if (st.mode === 'vehicle') return out;
     const tg = _target(st);
@@ -668,11 +676,11 @@
   // rule 6b: «Πινακίδες» and «Οδηγός» of the partner, free text (no list). Joining a partner trip shows that trip's own,
   // read-only, as its fee (a change of them is the trip's «Ανάθεση»)
   function _ptxHTML(st, joinCyc) {
-    if (!st.ptx) return '';
+    if (!st.ptx || _multiSeg(joinCyc)) return '';
     const dis = joinCyc ? ' disabled' : '';
     // no maxlength: a longer paste would be cut in silence (principle 1); the field turns red «έως N» instead
     const f = (attr, lbl, ph, max, val, mono) => {
-      const bad = !joinCyc && (_ptxt(val) || '').length > max;
+      const bad = !joinCyc && _chars(_ptxt(val)) > max;
       return '<div class="wi-pop-field wn5a-f wn5a-ptx' + (bad ? ' wn5a-bad' : '') + '" data-f="' + attr + '"><span class="wi-pop-lbl">' + lbl + '</span>'
         + '<input type="text" class="wi-pop-inp' + (mono ? ' wn5a-mono' : '') + '" data-' + attr + ' placeholder="' + ph + '" value="' + _e(val) + '" autocomplete="off"' + dis + ' aria-label="' + lbl + ' συνεργάτη">'
         + '<span class="wn5a-av' + (bad ? ' bad' : '') + '">' + (bad ? 'έως ' + max : '') + '</span></div>';

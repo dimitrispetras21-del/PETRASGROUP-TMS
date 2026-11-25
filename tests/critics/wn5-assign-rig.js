@@ -1091,6 +1091,16 @@ async function partner_text_board({ browser, origin, ok, scn, shots }) {
   const t = await dlgText(page);
   ok(scn, 'no RT code in the form', !jargon(t || '').length, t);
   await page.context().close();
+  // code review 25/11: a trip with a handover (two segments) has no one partner truck: no fields, nothing saved unseen
+  const mb = partnerBoard(null);
+  withPtx(mb);
+  const c2 = mb.cycles.find((c) => c.rt_id === 101);
+  c2.segments = [Object.assign({}, c2.segments[0], { segment_id: 991, label: 'A' }), Object.assign({}, c2.segments[0], { segment_id: 992, label: 'B', partner_id: 52, partner: 'Partner Test 02' })];
+  ({ page } = await K.openApp(browser, origin, { board: mb, viewport: VP1440 }));
+  await page.evaluate(() => WN5Act.assign(null, { entry: 'menu', rtId: 101 }));
+  await page.waitForSelector(DLG, { timeout: 4000 }).catch(() => {});
+  ok(scn, 'a trip with a handover: no «Πινακίδες» / «Οδηγός» of the partner in its form', !(await K.count(page, `${DLG} [data-ppl], ${DLG} [data-pdr]`)));
+  await page.context().close();
 }
 
 // the two papers of a partner trip (coordinator 25/11): the driver sheet and the week paper, drawn by the app's own

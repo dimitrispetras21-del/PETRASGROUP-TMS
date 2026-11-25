@@ -153,7 +153,7 @@ SELECT
     AND has_function_privilege('service_role', '${SIG.brd}', 'EXECUTE') AS worker_exec,
   NOT has_function_privilege('anon', 'public.plan_h_partner_text(jsonb,text,integer)', 'EXECUTE')
     AND NOT has_function_privilege('service_role', 'public.plan_h_partner_text(jsonb,text,integer)', 'EXECUTE')
-    AND NOT has_function_privilege('anon', 'public.rt_partner_text_follow()', 'EXECUTE') AS anon_closed;
+    AND NOT has_function_privilege('anon', 'public.rt_partner_text_follow()', 'EXECUTE') AS born_closed;
 `;
 }
 
