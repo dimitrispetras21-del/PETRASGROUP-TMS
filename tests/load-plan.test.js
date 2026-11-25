@@ -277,3 +277,27 @@ test('no fixed 33 in the capacity checks of the screens (Weekly, v4, form fill, 
   assert.strictEqual((oi.match(/LoadPlan\.tally\(/g) || []).length, 2, 'orders_intl: the fill line and the scan ask LoadPlan');
   assert.doesNotMatch(code('modules/weekly_intl.js'), /WI_PAL_CAP|[<>]=?\s*33\b|\/33\b/, 'weekly_intl');
 });
+
+// Owner 25/11: the single before the «δόντι» only when it is of the same delivery as the industrial beside it.
+// Two real groupages (W45) had the first delivery's single stand cab-side of the next delivery's industrial, so at
+// the first stop the forklift had to take out a pallet of a later stop first (last in, first out broken).
+// Blocked = a pallet with a later delivery (lower part index: parts run cab → doors) further towards the doors,
+// overlapping it across the box.
+function blocked(p) {
+  const C = p.rows.flatMap(r => r.cells.map(c => ({ part: c.part, a: r.at + c.x, b: r.at + c.x + c.w, y: c.y, h: c.h })));
+  return C.filter(a => C.some(b => b.part < a.part && b.a >= a.b && b.y < a.y + a.h && a.y < b.y + b.h)).length;
+}
+test('deliveries: no single of an earlier delivery behind the next one\'s industrial (owner 25/11)', () => {
+  // the two loads of W45, cab → doors: 2 + 3 industrial then 20 euro; 3 industrial then 2 + 10 + 10 euro
+  for (const parts of [
+    [{ n: 2, ind: true, no: 3 }, { n: 3, ind: true, no: 2 }, { n: 20, no: 1 }],
+    [{ n: 3, ind: true, no: 4 }, { n: 2, no: 3 }, { n: 10, no: 2 }, { n: 10, no: 1 }],
+  ]) {
+    const p = LP.layout(parts);
+    assert.strictEqual(blocked(p), 0, JSON.stringify(parts.map(x => x.n)) + ' ' + shape(p));
+    assert.strictEqual(p.placed, parts.reduce((a, x) => a + x.n, 0), 'every pallet placed');
+    assert.deepStrictEqual(gaps(p), []);
+  }
+  // without deliveries (one load counted by type) the owner's 18/11 shape stays
+  assert.strictEqual(shape(LP.plan({ eur: 6, ind: 3 })), 'ISXDD');
+});

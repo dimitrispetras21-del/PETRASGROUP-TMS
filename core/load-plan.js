@@ -107,7 +107,7 @@ function indOnly(i) {
 // front of it. No knife or single there: «η πλάκα θα ήταν πιο εύκολη και στην αντίληψη του χώρου» (owner 17/11).
 // A lone pallet in the last row stands against a side wall (nothing behind it but the bars); a lone industrial
 // always does, never in the middle (it could fall).
-// parts: [{ n, ind }] cab → doors. → { rows: [{ k: 'K'|'D'|'S'|'I'|'X', n, at, len, stag?, wall?, cells }], used,
+// parts: [{ n, ind, no? }] cab → doors; no = the delivery number (1 = first; 0 = none), absent = one delivery. → { rows: [{ k: 'K'|'D'|'S'|'I'|'X', n, at, len, stag?, wall?, cells }], used,
 //   placed, dropped }. cells: [{ part, ind?, x, y, w, h }] in dm, x along the box from the row's start (a staggered cell
 //   is at −2), y across (0 = one side wall, 24 = the other). dropped = pallets that do not fit after the last row.
 function minLen(run) { return run.ind ? Math.ceil(run.n / 2) * ROW.I : run.n === 1 ? 8 : 4 * run.n; }
@@ -120,6 +120,10 @@ function layout(parts) {
     else runs.push({ ind: x.ind, n: x.n, q: Array(x.n).fill(x.i) });
   }
   const onlyInd = runs.length === 1 && runs[0].ind;
+  // parts[i].no = the delivery number (the form); none = a load counted by type, one delivery as far as we know.
+  // 0 = an order with no delivery point (the form): its stop is unknown, so never the same as another part's.
+  const stopOf = i => (parts[i] && parts[i].no != null ? parts[i].no : null);
+  const sameStop = (a, b) => stopOf(a) == null || stopOf(b) == null || (stopOf(a) === stopOf(b) && stopOf(a) !== 0);
   const rows = [];
   let at = 0, stag = 0, firstEuro = true, dropped = 0, tailStag = 0;   // tailStag: the euro run before ended staggered
   const deferred = [];   // lone euro pallets that would leave a front-back gap: they go to the doors (below)
@@ -144,7 +148,11 @@ function layout(parts) {
         // Against a front-heavy load, one euro single goes in the middle between the last industrial pair and the
         // «δόντι»: «2 βιομηχανικές, μονή ευρωπαλ, βιομηχανική-ευρωπαλ μαζί, και μετά συνέχεια» (owner 18/11). Only
         // with a pair in front of it (a single never opens the box) and only for the first euro of the load.
+        // Only when the single is of the same delivery as the industrial it stands in front of (owner 25/11): a
+        // single of an earlier delivery there sits cab-side of the next delivery's industrial, so at its stop that
+        // industrial must come out first (two groupages of W45). Parts without a delivery (plan()) keep the rule.
         if (!onlyInd && nx && !nx.ind && firstEuro && !off && nx.q.length >= 3 && nx.q.length < NO_SINGLE_FROM
+            && sameStop(r.q[0], nx.q[0])
             && rows.length && rows[rows.length - 1].k === 'I' && rows[rows.length - 1].n === 2) {
           const later = runs.slice(ri + 2).reduce((a, x) => a + minLen(x), 0);
           if (at + 8 + ROW.I + 4 * (nx.q.length - 2) + later <= BOX - SAFE) push('S', [cell(nx.q.shift(), 0, 6, 8, 12)], 8);
