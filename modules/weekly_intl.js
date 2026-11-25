@@ -3366,7 +3366,7 @@ async function _wiSaveImportMatch(rowId,impId){
   // first and the _expect PATCH may still 409 — the group matched to nothing
   // (review 11/10). v4 only; v1 keeps today's best-effort path.
   if(oldExpRow&&_wiV2Active()&&expMatchRead===undefined){ _wiRefuse('Δεν διαβάστηκε η εξαγωγή — δοκίμασε ξανά','match refused'); return; }
-  if(oldExpRow&&!(await _wiRemoveImport(oldExpRow.id))){
+  if(oldExpRow&&!(await _wiRemoveImport(oldExpRow.id,{keepOwn:true}))){
     // The old match did not fully come off (a member is still on the old trip):
     // writing this export's vehicle onto it now would copy it onto the old
     // trip and its export. _wiRemoveImport already said why, in Greek.
@@ -3494,12 +3494,14 @@ async function _wiSaveImportMatch(rowId,impId){
 
 // Did the export group pass anything on to its matched import (owner 8/11
 // #10)? true = a member has a vehicle (it was inherited), or a member's trip
-// holds a leg of the import (a cleared trip keeps its legs, _wiClear): the
-// unmatch then takes the full path — the leg leaves, the vehicle is cleared.
+// holds a leg of the import (a cleared trip keeps its legs, _wiClear).
 // false = no member has a vehicle and none rides with the import: the
-// import's own vehicle and trip stay. Every member read live (the board row
-// may be stale). Any failed read → true, today's path, whose own reads
+// import's vehicle and trip are its own. Every member read live (the board
+// row may be stale). Any failed read → true, the full path, whose own reads
 // (_wiRtLeave) refuse and say so rather than clear on a guess.
+// Since 24/11 only the whole-group MOVE asks this (_wiRemoveImport keepOwn):
+// owner «να το κρατά» — a group dragged to another export keeps its own truck;
+// a user unmatch («×») always clears.
 async function _wiExpPassedOn(expIds,impIds){
   const pgs=(impIds||[]).map(id=>Number(_wiRecOf(id)?.fields?.['Order No']));
   for(const oid of expIds||[]){
@@ -3516,7 +3518,7 @@ async function _wiExpPassedOn(expIds,impIds){
 // Returns true only when the unmatch fully landed (match cleared AND every
 // cleared member left its round trip) — a re-match must not write a new
 // vehicle onto a member that still sits on the old trip (review 4/10, P3-3).
-async function _wiRemoveImport(rowId){
+async function _wiRemoveImport(rowId,opts){
   const row=WINTL.rows.find(r=>r.id===rowId);
   if(!row){ toast('Η γραμμή δεν βρέθηκε','warn'); return false; }
   if(!row.importId){ toast('Δεν υπάρχει ταιριασμένη εισαγωγή','warn'); return false; }
@@ -3551,14 +3553,9 @@ async function _wiRemoveImport(rowId){
   }
   _wiSync('wi-sync-'+rowId, ok?'ok':'err',
     ok?'Αφαιρέθηκε':'Η αφαίρεση ΔΕΝ γράφτηκε στη βάση — κάνε Ανανέωση',oid0); // T3
-  // A match may come before the assignment (owner 8/11 #10): when the export
-  // group passed nothing on (_wiExpPassedOn), the import's own vehicle and
-  // trip stay — before 8/11 this wiped them as if inherited.
-  const giAll = ok ? await _wiGiGroup(impId) : null;
-  const ownImp = ok && !(row.truckId||row.partnerId) && !(await _wiExpPassedOn(row.orderIds, giAll.members));
   if(ok){
     // Ξεταίριασμα = το import δεν ταξιδεύει πια με αυτό το όχημα (owner 13/8):
-    // καθαρίζεται η κληρονομημένη ανάθεσή του για να μην μείνει ορφανή.
+    // καθαρίζεται η ανάθεσή του, κληρονομημένη ή δική του (owner 24/11).
     //
     // GI- group fix (owner 8/9 defect item 3, GI-MTRB928Y/307+308): «η ομάδα
     // εισαγωγών ταιριάζει ως σύνολο» ισχύει και στο ξεταίριασμα — clearing
@@ -3567,14 +3564,24 @@ async function _wiRemoveImport(rowId){
     // unmatched/unassigned while Postgres still had one member Assigned).
     // The group ties or breaks TOGETHER: every live member gets cleared,
     // never a subset — read back is skipped here (same as the pre-existing
-    // single-id clear) since this is a best-effort inherit-cleanup, not the
+    // single-id clear) since this is a best-effort cleanup, not the
     // authoritative match write above.
-    const giGroup = ownImp ? { members: [] } : giAll;   // ownImp: see above
+    //
+    // A user unmatch clears always, whoever gave the import its vehicle (owner
+    // 24/11, «πάντα»): the assignment stays on the export only. The whole-group
+    // MOVE to another export (opts.keepOwn, _wiSaveImportMatch) keeps the
+    // import's OWN vehicle and trip when the old export passed nothing on
+    // (owner 24/11, «να το κρατά»; the 8/11 #10 rule, now for the move only).
+    // A member already In Transit / Delivered keeps both (below), and a leg
+    // that cannot leave its trip keeps the vehicle (_wiRtLeave).
+    const giAll = await _wiGiGroup(impId);
+    const ownImp = !!(opts&&opts.keepOwn) && !(row.truckId||row.partnerId) && !(await _wiExpPassedOn(row.orderIds, giAll.members));
+    const giGroup = ownImp ? { members: [] } : giAll;
     const clearErrors=[], keptExecuting=[];
     for(const memberId of giGroup.members){
       try{
         if(await _wiExecutingLive(memberId)){ keptExecuting.push(memberId); continue; }
-        // Leg OFF the export's round trip FIRST, vehicle second — whatever
+        // Leg OFF its round trip (the export's, or the import's own) FIRST, vehicle second — whatever
         // decides above that this member is cleared (see _wiRtLeave: the other
         // order wiped the export's truck and the driver's payroll line, 30/9).
         // A failed leg removal leaves this member's assignment untouched.

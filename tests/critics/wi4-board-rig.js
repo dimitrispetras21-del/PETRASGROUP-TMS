@@ -42,7 +42,7 @@
 //   re-read) · late (relays empty / national while a popover is open) ·
 //   offline · quiet (a group member fails) · natmissing · paper (the printed week, owner 10/11) · done (executed = dimmed) ·
 //   twoday (two delivery days: row on the first, divider before the other day) · w1440 ·
-//   unassigned (owner 8/11 #10: a match on an export with no vehicle) ·
+//   unassigned (owner 8/11 #10: a match on an export with no vehicle; since 24/11 the unmatch clears the import's own vehicle too) ·
 //   vs (WP-A of the Weekly National v4 plan: one Veroia day — assignment,
 //   form, drop order by place, loud failures, Pallet Exchange)
 // Exit: 0 all green · 1 a check failed · 2 usage · 3 NOT READY (v4 inactive).
@@ -1701,8 +1701,9 @@ async function scnUnassigned(browser, origin) {
     }), null, { mutate });
     ok(scn, 'E003 drawn matched to I007 on both boards, the unmatch reports success', res.off.r.ok && res.on.r.ok && res.off.r.v === true && res.on.r.v === true, { v1: res.off.r, v4: res.on.r });
     ok(scn, 'v4 writes = v1 writes (table, record, fields)', JSON.stringify(res.on.w) === JSON.stringify(res.off.w), { v1: res.off.w, v4: res.on.w });
-    ok(scn, 'the table says so: match cleared, I007 keeps its own truck T014 and status', !fld(res.on.S, 'recWiE003', 'Matched Import ID') &&
-      link(fld(res.on.S, 'recWiI007', 'Truck')) === 'recWiT014' && fld(res.on.S, 'recWiI007', 'Status') === 'Assigned', res.on.w);
+    // owner 24/11 «πάντα» (replaces 8/11 #10): the import loses its own truck too; the export keeps none.
+    ok(scn, 'the table says so: match cleared, I007 loses its own truck T014, back to Pending', !fld(res.on.S, 'recWiE003', 'Matched Import ID') &&
+      !link(fld(res.on.S, 'recWiI007', 'Truck')) && fld(res.on.S, 'recWiI007', 'Status') === 'Pending', res.on.w);
     const sent = S => S.costs.filter(c => !/^GET /.test(c));
     ok(scn, 'P&L: the export\'s trip only read (no trip → nothing sent to /costs)', !sent(res.on.S).length && !sent(res.off.S).length && res.on.S.costs.some(c => /^GET \/costs\/rt\?/.test(c)), { v1: res.off.S.costs, v4: res.on.S.costs });
     ok(scn, 'no page errors', !res.on.errs.length && !res.off.errs.length, { v1: res.off.errs, v4: res.on.errs });
@@ -1710,7 +1711,8 @@ async function scnUnassigned(browser, origin) {
   {
     // E003 waits alone on a trip of its own (cleared earlier, no vehicle); the
     // own-truck import I007 was matched after that and rides its own trip. The
-    // unmatch must leave I007's truck and trip alone (review 8/11).
+    // unmatch takes I007's leg off ITS trip first, then its truck (owner 24/11
+    // «πάντα», replacing the 8/11 #10 exception); E003's trip is not touched.
     const scn = 'unassigned.unmatchOwnTrip';
     const mutate = db => { db[T.ORDERS].find(r => r.id === 'recWiE003').fields['Matched Import ID'] = 'recWiI007'; };
     const rts = [{ id: 78, code: 'RT-E', status: 'open', ct_rt_legs: [{ order_id: 9103, direction: 'EXPORT' }] },
@@ -1720,8 +1722,8 @@ async function scnUnassigned(browser, origin) {
       return r && r.importId === 'recWiI007' ? _wiRemoveImport(r.id).then(v => ({ ok: true, v })) : { ok: false, importId: r && r.importId };
     }); }, null, { mutate });
     ok(scn, 'the unmatch reports success on both boards', res.off.r.ok && res.on.r.ok && res.off.r.v === true && res.on.r.v === true, { v1: res.off.r, v4: res.on.r });
-    ok(scn, 'nothing sent to /costs: I007 stays on its own trip', [res.on.S, res.off.S].every(S => !S.costs.some(c => !/^GET /.test(c))), { v1: res.off.S.costs, v4: res.on.S.costs });
-    ok(scn, 'the table says so: match cleared, I007 keeps T014', !fld(res.on.S, 'recWiE003', 'Matched Import ID') && link(fld(res.on.S, 'recWiI007', 'Truck')) === 'recWiT014'
+    ok(scn, 'I007\'s leg leaves its own trip and nothing else is sent to /costs', [res.on.S, res.off.S].every(S => { const w = S.costs.filter(c => !/^GET /.test(c)); return w.length === 1 && w[0] === 'DELETE /costs/rt/79/legs?order_id=9135'; }), { v1: res.off.S.costs, v4: res.on.S.costs });
+    ok(scn, 'the table says so: match cleared, I007 has no truck', !fld(res.on.S, 'recWiE003', 'Matched Import ID') && !link(fld(res.on.S, 'recWiI007', 'Truck'))
       && JSON.stringify(res.on.w) === JSON.stringify(res.off.w), { v1: res.off.w, v4: res.on.w });
     ok(scn, 'no page errors', !res.on.errs.length && !res.off.errs.length, { v1: res.off.errs, v4: res.on.errs });
   }
