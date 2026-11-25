@@ -61,7 +61,7 @@ test('Drivers page form: every field it sends is in the DRIVERS map', () => {
 test('«Ανάθεση» shortcut: the POST body keys are in the DRIVERS map', () => {
   // the form calls core/entity.js (the v5 modules never write the facade themselves)
   assert.match(ASG, /await createDriverQuick\(name, type\)/);
-  const m = ENT.match(/atCreate\(TABLES\.DRIVERS, \{([^}]*)\}\)/);
+  const m = ENT.match(/atCreate\(TABLES\.DRIVERS, \{([^}]*)\}(?:, \{ noUndo: true \})?\)/);
   assert.ok(m, 'atCreate(TABLES.DRIVERS, {...}) in core/entity.js createDriverQuick');
   const keys = [...m[1].matchAll(/(?:'([^']+)'|(\w+)):/g)].map((x) => x[1] || x[2]);
   assert.deepStrictEqual(keys, ['Full Name', 'Type']);
@@ -74,7 +74,9 @@ test('«Ανάθεση» shortcut: the POST body keys are in the DRIVERS map', (
 function canCreateFor(role, perm) {
   const fn = (ENT.match(/function canCreateEntity\(entityKey\) \{[\s\S]*?\n\}\n/) || [''])[0];
   assert.ok(fn, 'canCreateEntity in core/entity.js');
-  const cr = (ENT.match(/createRoles: (\[[^\]]*\])/) || [])[1];
+  // the drivers block only (another entity's createRoles above it must not be read instead)
+  const drvBlk = ENT.slice(ENT.indexOf("formTitles: ['Νέος οδηγός'"));
+  const cr = (drvBlk.match(/createRoles: (\[[^\]]*\])/) || [])[1];
   const ctx = { ROLE: role, can: () => perm, ENTITY_CONFIG: { drivers: { perm: 'drivers', createRoles: vm.runInNewContext(cr) } } };
   vm.runInNewContext(fn + '\nthis.r = canCreateEntity("drivers");', ctx);
   return ctx.r;
@@ -92,4 +94,11 @@ test('front end: config.js keeps dispatcher drivers:view (edit stays closed)', (
   assert.match(cfg, /dispatcher: \{[^\n]*drivers:'view'/);
   // the row pencil is behind 'full', like the card ✎ (canEdit)
   assert.match(ENT, /can\(cfg\.perm\) === 'full' \? `<button type="button" class="btn-icon" aria-label="Επεξεργασία"/);
+});
+
+test('quick create: no Undo entry, refused offline before anything is queued (code review xhigh)', () => {
+  const fn = (ENT.match(/async function createDriverQuick\(name, type\) \{[\s\S]*?\n\}\n/) || [''])[0];
+  assert.ok(fn, 'createDriverQuick in core/entity.js');
+  assert.match(fn, /atCreate\(TABLES\.DRIVERS, \{[^}]*\}, \{ noUndo: true \}\)/);
+  assert.ok(fn.indexOf('_isOnline()') > -1 && fn.indexOf('_isOnline()') < fn.indexOf('atCreate('), 'offline refusal before atCreate');
 });

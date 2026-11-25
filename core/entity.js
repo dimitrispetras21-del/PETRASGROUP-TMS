@@ -2954,7 +2954,12 @@ function canCreateEntity(entityKey) {
 async function createDriverQuick(name, type) {
   if (!canCreateEntity('drivers')) throw new Error('Ο ρόλος σας δεν δημιουργεί οδηγούς');
   if (type !== 'Internal' && type !== 'External') throw new Error('Λείπει ο τύπος του οδηγού');
-  const rec = await atCreate(TABLES.DRIVERS, { 'Full Name': name, Type: type });
+  // offline atCreate QUEUES the POST and sends it on reconnect: the form would say «not written» while the driver
+  // arrives later, and a retry would queue a duplicate (code review xhigh). Refused here, nothing queued.
+  if (typeof _isOnline === 'function' && !_isOnline()) throw new Error('δεν υπάρχει σύνδεση — δοκίμασε ξανά όταν επανέλθει');
+  // noUndo: the assignment saved next goes through /plan (no undo entry), so the toolbar Undo would still point at
+  // this create and soft-delete the driver now on the trip (owner) or 403 (dispatcher) (code review xhigh)
+  const rec = await atCreate(TABLES.DRIVERS, { 'Full Name': name, Type: type }, { noUndo: true });
   if (!rec || !rec.id || rec._offline) throw new Error('Ο οδηγός δεν γράφτηκε — δεν υπάρχει σύνδεση');
   invalidateCache(TABLES.DRIVERS);
   if (typeof PlanIds !== 'undefined' && typeof PlanIds.stale === 'function') PlanIds.stale();
@@ -3166,7 +3171,9 @@ async function saveEntityRecord(entityKey, recId) {
     if (recId) {
       await atPatch(cfg.tableId, recId, fields);
     } else {
-      await atCreate(cfg.tableId, fields);
+      // a role that may create but not delete (dispatcher on drivers, owner 25/11) gets no Undo: its undo is a
+      // DELETE the Worker refuses (code review xhigh)
+      await atCreate(cfg.tableId, fields, can(cfg.perm) === 'full' ? undefined : { noUndo: true });
       // F62: a client (or partner, truck, trailer, driver) created here is not in the v5 catalogue (/plan/lookups)
       // read before it, so the national forms would offer it and then refuse its save (ids_missing) until a reload.
       // Same mechanism as a new place (F52, fhLocationSaved): the next opening of a form reads the catalogue again.

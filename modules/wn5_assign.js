@@ -682,17 +682,22 @@
   // «χωρίς οδηγό». The driver list offers to create it, by the name typed, when no driver of the catalogue (active or
   // not: an inactive one is re-activated on the Drivers page, never duplicated here) carries that name. The type is
   // required on the Drivers page too (it decides the pay), so the row asks it: two buttons, no default guessed.
-  function _newDriverHTML(px, q) {
+  // Code review xhigh: a one-word query while drivers still match is a search, not a name («Pap» → Papadopoulos), so
+  // the row waits for a second word or for an empty list; an inactive driver of that name is said, never hidden
+  // (the dispatcher cannot re-activate: no PATCH).
+  function _newDriverHTML(px, q, nOpts) {
     if (px !== 'dr' || typeof createDriverQuick !== 'function' || typeof canCreateEntity !== 'function' || !canCreateEntity('drivers')) return '';
     const name = String(q || '').trim().replace(/\s+/g, ' ');
     if (name.length < 2) return '';
     const k = K(), nq = k.norm(name);
-    if (_list('driver').some((x) => k.norm(x.label) === nq)) return '';
+    const same = _list('driver').find((x) => k.norm(x.label) === nq);
+    if (same) return same.active ? '' : '<div class="wn5a-none">Ο οδηγός «' + _e(same.label) + '» είναι ανενεργός — ζήτα να ενεργοποιηθεί στους Οδηγούς</div>';
+    if (nOpts && !name.includes(' ')) return '';
     return '<div class="wn5a-new"><span>+ Νέος οδηγός «' + _e(name) + '»</span>'
       + '<button type="button" data-newdr="Internal">Εσωτερικός</button><button type="button" data-newdr="External">Εξωτερικός</button></div>';
   }
   function _listHTML(opts, px, hi, q) {
-    const add = _newDriverHTML(px, q);
+    const add = _newDriverHTML(px, q, opts.length);
     return opts.map((o, i) => '<div class="wn5a-o' + (i === hi ? ' hi' : '') + (o.cls === 'busy' ? ' wi-sdo--busy' : '') + '" data-pick="' + o.id + '" data-px="' + px + '">'
       + '<span class="' + (FIELDS[px].mono ? 'wn5a-mono' : '') + '">' + _e(o.label) + '</span>'
       + (o.sub ? '<div class="wi-sdo-sub wn5a-osub ' + o.cls + '">' + _e(o.sub) + '</div>' : '')
@@ -851,7 +856,8 @@
       list.q = q;
       list.opts = _options(st, px, q);
       list.hi = Math.min(list.hi, Math.max(0, list.opts.length - 1));
-      list.el.innerHTML = _listHTML(list.opts, px, list.hi, q);
+      // a create in flight keeps its waiting line: no second create row under the user's typing (code review xhigh)
+      list.el.innerHTML = creating && px === 'dr' ? _waitHTML(creating) : _listHTML(list.opts, px, list.hi, q);
       const r = inp.getBoundingClientRect();
       list.el.style.display = 'block';
       list.el.style.left = r.left + 'px';
@@ -865,12 +871,13 @@
     // then the catalogue is read again and the new row is found by the legacy id the POST answered — never by its
     // name. A refusal (403 before the Worker allows it) is already said by _atRetry; the strip says what did not
     // happen, so no assignment goes on as if the driver existed.
-    let creating = false;
+    let creating = '';   // the name being created, '' when none
+    const _waitHTML = (name) => '<div class="wn5a-none">Δημιουργία οδηγού «' + _e(name) + '»…</div>';
     async function _createDriver(q, type) {
       const name = String(q || '').trim().replace(/\s+/g, ' ');
       if (creating || name.length < 2 || !_live()) return;
-      creating = true;
-      if (list) list.el.innerHTML = '<div class="wn5a-none">Δημιουργία οδηγού «' + _e(name) + '»…</div>';
+      creating = name;
+      if (list) list.el.innerHTML = _waitHTML(name);
       try {
         const rec = await createDriverQuick(name, type);
         const ids = await PlanIds.load();
@@ -881,9 +888,10 @@
       } catch (e) {
         _dropList();
         if (e && e._sessionGone) return;   // the session flow (core/api.js) already took the page
-        WN5Act.strip(d.msg, K().clientErr('driver_create', 'Ο οδηγός «' + name + '» δεν προστέθηκε: ' + (e && e.message ? e.message : 'άγνωστο σφάλμα')));
+        // the form closed during the wait: the board's host says it, never a detached dialog
+        WN5Act.strip(d.dlg.isConnected ? d.msg : K().boardHost(), K().clientErr('driver_create', 'Ο οδηγός «' + name + '» δεν προστέθηκε: ' + (e && e.message ? e.message : 'άγνωστο σφάλμα')));
       } finally {
-        creating = false;
+        creating = '';
       }
     }
     d.dlg.addEventListener('focusin', (ev) => { const t = ev.target; if (!quiet && t.matches && t.matches('[data-in]')) openList(t); });
@@ -939,7 +947,7 @@
       if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
         ev.preventDefault();
         list.hi = Math.max(0, Math.min(list.opts.length - 1, list.hi + (ev.key === 'ArrowDown' ? 1 : -1)));
-        list.el.innerHTML = _listHTML(list.opts, list.px, list.hi, list.q);
+        list.el.innerHTML = creating && list.px === 'dr' ? _waitHTML(creating) : _listHTML(list.opts, list.px, list.hi, list.q);
       } else if (ev.key === 'Enter') {
         ev.preventDefault();
         const o = list.opts[list.hi];

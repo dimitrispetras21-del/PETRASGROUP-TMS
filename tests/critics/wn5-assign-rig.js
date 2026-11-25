@@ -999,7 +999,9 @@ async function rt_expect({ browser, origin, ok, scn, shots }) {
 const DRV_TID = 'tbl7UGmYhc2Y82pPs';
 async function new_driver({ browser, origin, ok, scn, shots }) {
   const NAME = 'Driver Rig New';
-  const { page, S } = await K.openApp(browser, origin, { board: board(), plan: { 'POST /plan/legs': async () => OK('plan_put_group', { rt_id: 901 }) },
+  const lookups = K.clone(K.LOOKUPS);
+  lookups.drivers.push({ id: 98, legacy_id: 'recRigOldDrv98', full_name: 'Driver Rig Old', active: false });
+  const { page, S } = await K.openApp(browser, origin, { board: board(), lookups, plan: { 'POST /plan/legs': async () => OK('plan_put_group', { rt_id: 901 }) },
     facade: { [`POST ${DRV_TID}`]: async (e, S2) => {
       S2.lookups.drivers.push({ id: 99, legacy_id: 'recRigNewDrv99', full_name: e.body.fields['Full Name'], active: true });
       return [200, { id: 'recRigNewDrv99', createdTime: '2026-11-25T10:00:00.000Z', fields: e.body.fields }];
@@ -1011,6 +1013,17 @@ async function new_driver({ browser, origin, ok, scn, shots }) {
   await page.keyboard.type('Driver Test 01');
   await page.waitForTimeout(80);
   ok(scn, 'an existing driver name offers no «+ Νέος οδηγός»', !(await K.count(page, '.wn5a-list .wn5a-new')));
+  // one word while drivers still match is a search, not a name (code review xhigh)
+  await page.click(`${DLG} [data-in="dr"]`, { clickCount: 3 });
+  await page.keyboard.type('Test');
+  await page.waitForTimeout(80);
+  ok(scn, 'a one-word search with matches offers no «+ Νέος οδηγός»', !(await K.count(page, '.wn5a-list .wn5a-new')) && (await K.count(page, '.wn5a-list [data-pick]')) > 0);
+  // an inactive driver of that name is said, never duplicated
+  await page.click(`${DLG} [data-in="dr"]`, { clickCount: 3 });
+  await page.keyboard.type('Driver Rig Old');
+  await page.waitForTimeout(80);
+  const inact = await page.evaluate(() => (document.querySelector('.wn5a-list') || {}).textContent || '');
+  ok(scn, 'an inactive driver of the name: «… είναι ανενεργός», no create row', /Ο οδηγός «Driver Rig Old» είναι ανενεργός/.test(inact) && !(await K.count(page, '.wn5a-list .wn5a-new')), inact);
   // a new name: the row with two type buttons, no default
   await page.click(`${DLG} [data-in="dr"]`, { clickCount: 3 });
   await page.keyboard.type(NAME);
