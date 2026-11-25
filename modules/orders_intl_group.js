@@ -1008,7 +1008,12 @@ function saveBtn(text, busy) {
   b.textContent = text;
 }
 async function save() {
-  const s = IG.s; if (!s || s.saving) return;
+  const s = IG.s;
+  // Entry test 25/11 (finding 10): a press of «Αποθήκευση» sent nothing and said nothing. This was the only exit of the
+  // save with neither a request nor a message: the form's state is gone (the window under it was redrawn, watchClose)
+  // or a save is still running. Each now says so; nothing is written in either case (principle 1).
+  if (!s) { showErrorToast('Η φόρμα δεν είναι πια ενεργή — κλείσε την και άνοιξε ξανά την παραγγελία· δεν γράφτηκε τίποτα', 'warn', 12000); return; }
+  if (s.saving) { toast('Η αποθήκευση τρέχει ακόμη — περίμενε να τελειώσει', 'warn'); return; }
   if (s.mode !== 'group') {
     // A single load: the form of 8/11, with the panel's order as the points' numbers.
     const m = s.members[0];

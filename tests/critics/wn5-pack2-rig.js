@@ -425,7 +425,9 @@ async function f63({ browser, origin, ok, scn, shots }) {
   ok(scn, 'the board shows the new points (stop 1006 or 1007) without «Ανανέωση» — in the row or its rota line', pts.includes('1006') || pts.includes('1007'), pts);
   const rota = await page.$$eval('#content .wn5-sub.wn5-rota[data-rt="101"]', (xs) => xs.length).catch(() => 0);
   ok(scn, 'a pickup after the truck\'s deliveries is its rota line (#286)', rota === 1, rota);
-  ok(scn, 'the popover closed', await K.count(page, dlg('plus')) === 0);
+  // entry test 25/11 (finding 2): the «+» stays open on the new board for the next add (it closed before)
+  ok(scn, 'the popover stays open, drawn again from the new board (N-T101 no longer waiting there)', await K.count(page, dlg('plus')) === 1
+    && await K.count(page, `${dlg('plus')} .wn5-pline[data-piece="4101"]`) === 0);
   await shot(page, shots, 'pack2-f63-after-add-1440');
   ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
   await page.context().close();
