@@ -844,7 +844,10 @@ function _qbandHTML(m, known) {
   // «παλιά αιτήματα · N ▾», whose cards open in place (never hidden, owner 15/11)
   const qOld = m.queue.filter((it) => it.old);
   const q = m.queue.filter((it) => !it.old);
-  const oldBtn = qOld.length ? `<button type="button" class="wi4-link wn5-q-old" data-q-old="${qOld.length}" aria-expanded="${_qOld}" onclick="WN5._qOldTog()">παλιά αιτήματα · ${qOld.length} ${_qOld ? '▴' : '▾'}</button>` : '';
+  // what the count leaves out is said beside it (owner rule 15/11): the local pickups shown this week, in their group
+  const nLoc = m.days.reduce((a, d) => a + d.rows.filter((r) => r.kind === 'unassigned' && r.vs && r.pickupLocal).length, 0);
+  const locTxt = nLoc ? `<span class="wn5-q-old wn5-q-loc" data-q-loc="${nLoc}" title="Στο τέλος της ημέρας τους, «Τοπικές παραλαβές»">τοπικές παραλαβές · ${nLoc}</span>` : '';
+  const oldBtn = locTxt + (qOld.length ? `<button type="button" class="wi4-link wn5-q-old" data-q-old="${qOld.length}" aria-expanded="${_qOld}" onclick="WN5._qOldTog()">παλιά αιτήματα · ${qOld.length} ${_qOld ? '▴' : '▾'}</button>` : '');
   const oldCards = _qOld && qOld.length ? `<div class="wn5-qcards wn5-qcards-old">${qOld.map((it) => _qcardHTML(it, m)).join('')}</div>` : '';
   if (!q.length) return `<div class="wi4-q wn5-q">${search}<div class="wi4-q-hd"><span>ΕΠΟΜΕΝΑ · <span class="wn5-lc">κανένα</span></span>${oldBtn}</div>${oldCards}</div>`;
   // Three cards at 1920 (Figma 2011:7745 / H1). At ≤1600 three cards of ~350px cut the client and its «+N» away

@@ -1786,9 +1786,11 @@
       // owner 25/11: a VS export picked up near Veroia is the local driver's (WN5L.localPlace, the board's one rule):
       // still offered, marked «τοπική» and after the trucks' own requests. A place without coordinates is not local.
       const co = typeof WN5L !== 'undefined' && typeof WN5 !== 'undefined' && typeof WN5.coordOf === 'function' ? WN5.coordOf() : null;
+      // the board's hub (PlanIds.hub, as _modelOpts), then the cycles' Veroia stop: one hub for the board and this list
+      const hubL = (typeof PlanIds !== 'undefined' && typeof PlanIds.hub === 'function' && PlanIds.hub()) || st.hub;
       const locOf = (it) => (it.nat_from_location_id != null ? it.nat_from_location_id : it.position_location_id);
       for (const g of gs) {
-        g.local = !!co && g.items.every((it) => it.kind === 'vs_export' && WN5L.localPlace(locOf(it), co, st.hub) === true);
+        g.local = !!co && g.items.every((it) => it.kind === 'vs_export' && WN5L.localPlace(locOf(it), co, hubL) === true);
         if (g.local) g.chip = 'τοπική';
       }
       const far = (g) => (g.day && st.day ? Math.abs(_dayDiff(st.day, g.day)) : 1e6);

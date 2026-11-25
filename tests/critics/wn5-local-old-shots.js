@@ -49,7 +49,7 @@ async function d01({ browser, origin, shots }) {
   if (shots) await page.screenshot({ path: `${shots}/${TAG}-01-board.png`, fullPage: true });
   const old = await page.$('#content details.wn5-dgrp-old > summary');
   if (old) await old.click();
-  const qo = await page.$('#content .wn5-q-old');
+  const qo = await page.$('#content button.wn5-q-old');
   if (qo) await qo.click();
   await page.waitForTimeout(200);
   facts('02-old-open', await view(page));
