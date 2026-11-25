@@ -1,0 +1,187 @@
+// Generates the dry run, the rollback, the rollback's dry run and the verify of 114 FROM its source
+// (114_plan_split_at_loading.sql):
+//   node worker/migrations/drafts/tools/build-114.mjs          (writes them)
+//   node worker/migrations/drafts/tools/build-114.mjs --check  (exit 1 if a committed file drifted)
+// Why generated (principle 3): the dry run runs EXACTLY the owner's statements, and the rollback reverses EXACTLY the
+// hunks 114 applied - it reads them (and the md5 before / after) from the source, never a hand copy.
+// tests/sql-114-drafts.test.js fails on drift; tms-auditor/test/plan-114.test.mjs runs them on the production-shaped copy.
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { buildDryRun } from './build-073-dryrun.mjs';
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+// drafts/ until the owner runs it, then one up (CLAUDE.md rule 5); never both
+const IN_DRAFTS = path.resolve(HERE, '..');
+export const SOURCE = '114_plan_split_at_loading.sql';
+export const DIR = fs.existsSync(path.join(IN_DRAFTS, SOURCE)) ? IN_DRAFTS : path.resolve(HERE, '..', '..');
+export const ROLLBACK = '114_plan_split_at_loading_rollback.sql';
+export const VERIFY = '114_plan_split_at_loading_verify.sql';
+const md5Of = (sig) => `(SELECT md5(prosrc) FROM pg_proc WHERE oid = '${sig}'::regprocedure)`;
+const VIEW = `md5(pg_get_viewdef('public.v_piece_state'::regclass, true))`;
+
+// The facts of the source, read once: the hunk constants, the live md5 (PART 0), the generated md5 (PART 2), the view
+export function facts(src) {
+  const consts = Object.fromEntries([...src.matchAll(/^ {2}([a-z0-9_]+) CONSTANT text := \$h\$([\s\S]*?)\$h\$;$/gm)].map((m) => [m[1], m[2]]));
+  const part0 = src.slice(src.indexOf('===== PART 0'), src.indexOf('===== PART 1'));
+  const part2 = src.slice(src.indexOf('===== PART 2'), src.indexOf('===== PART 3'));
+  const live = Object.fromEntries([...part0.matchAll(/\('(public\.[a-z_]+\([a-z,\[\]]*\))', '([0-9a-f]{32})'\)/g)].map((m) => [m[1], m[2]]));
+  const gen = [...part2.matchAll(/\('(public\.[a-z_]+\([a-z,]*\))', ARRAY\[([a-z0-9_, ]+)\], ARRAY\[([a-z0-9_, ]+)\], '([0-9a-f]{32}|@[A-Z])'\)/g)]
+    .map((m) => ({ sig: m[1], a: m[2].split(',').map((x) => x.trim()), b: m[3].split(',').map((x) => x.trim()), m: m[4] }));
+  if (gen.length !== 3 || gen.some((g) => !live[g.sig] || g.a.length !== g.b.length || [...g.a, ...g.b].some((k) => !(k in consts)))) {
+    throw new Error(`${SOURCE}: PART 0 / PART 2 are not the three functions with their hunks`);
+  }
+  const vo = /m_view_old CONSTANT text := '([0-9a-f]{32})'/.exec(src), vn = /m_view_new CONSTANT text := '([0-9a-f]{32}|@V)'/.exec(src);
+  const a = src.indexOf('  -- the hunks:'), b = src.indexOf('  m_view_old');
+  if (!vo || !vn || a < 0 || b < a) throw new Error(`${SOURCE}: the view md5 or the hunk block was not found`);
+  // the CREATE OR REPLACE VIEW of PART 1 (the rollback writes 071's own text back: same block, the old expression)
+  const v0 = src.indexOf('  CREATE OR REPLACE VIEW public.v_piece_state'), v1 = src.indexOf('  WHERE NOT pp.is_split;', v0);
+  if (v0 < 0 || v1 < 0) throw new Error(`${SOURCE}: the view block was not found`);
+  return { consts, live, gen, viewOld: vo[1], viewNew: vn[1], hunks: src.slice(a, b), view: src.slice(v0, v1 + '  WHERE NOT pp.is_split;'.length) };
+}
+
+// The text 114 writes, from a live text (the PGlite test derives the md5 of PART 2 with it)
+export function applyHunks(text, g, consts) {
+  let out = text;
+  g.a.forEach((k, i) => {
+    const n = out.split(consts[k]).length - 1;
+    if (n !== 1) throw new Error(`${g.sig}: hunk ${k} found ${n} times`);
+    out = out.replace(consts[k], () => consts[g.b[i]]);
+  });
+  return out;
+}
+
+// 071's is_stock, as the view held it before 114 (the rollback puts this expression back)
+const STOCK_NEW = /         -- 114 \(owner 8\/11\)[^\n]*\n[^\n]*\n         \(pp\.parent_piece_id IS NOT NULL AND pp\.own_last_leg_id IS NULL\n          AND \(pp\.eff_last_leg_id IS NOT NULL OR \(pp\.position_location_id = hub\.id\) IS TRUE\)\) AS is_stock/;
+const STOCK_OLD = '         (pp.parent_piece_id IS NOT NULL AND pp.own_last_leg_id IS NULL) AS is_stock';
+export function oldView(f) {
+  if (!STOCK_NEW.test(f.view)) throw new Error(`${SOURCE}: the is_stock expression of PART 1 was not found`);
+  return f.view.replace(STOCK_NEW, STOCK_OLD);
+}
+
+// a piece split at its loading point: split, never taken by a truck, not at Veroia (what 114's rollback would refuse)
+const SPLIT_AT_START = `SELECT count(*) FROM public.v_piece_pos pp JOIN public.shipments s ON s.id = pp.shipment_id AND s.deleted_at IS NULL
+     WHERE pp.is_split AND pp.eff_last_leg_id IS NULL
+       AND pp.position_location_id IS DISTINCT FROM (SELECT h.id FROM public.locations h WHERE h.is_hub)`;
+
+export const DRY = {
+  source: SOURCE, target: '114_plan_split_at_loading_dryrun.sql', name: 'DRY RUN 114',
+  header: `-- 114 DRY RUN - GENERATED by worker/migrations/drafts/tools/build-114.mjs from ${SOURCE}.
+-- DO NOT EDIT BY HAND (tests/sql-114-drafts.test.js fails on drift). ONE DO block = ONE statement: its final error
+-- undoes everything inside it (lesson 056). ASCII only. WHEN: after 15:00, before ${SOURCE}.
+-- EXPECTED (the red ERROR is deliberate): NOTICE "114 OK: a waiting load splits at its loading point ..." and then
+--   ERROR: P0001: DRY RUN 114 finished - EVERYTHING UNDONE, nothing kept. The block ran to its end  ||  114 ran:
+--   split GEN_P, problem GEN_S, board GEN_B, view GEN_V
+--   Anything else (an ERROR from one of 114's guards or proofs): do NOT run 114, copy the message to the coordinator.`,
+  epilogue: `  res := format('114 ran: split %s, problem %s, board %s, view %s', ${md5Of('public.plan_split_piece(jsonb,text,text)')},
+    ${md5Of('public.plan_shipment_problem(bigint)')}, ${md5Of('public.plan_board(date,text)')}, ${VIEW});`,
+};
+
+export function buildRollback(src) {
+  const f = facts(src);
+  const blocks = f.gen.map((g) => `  SELECT * INTO p FROM pg_proc WHERE oid = to_regprocedure('${g.sig}');
+  IF md5(p.prosrc) <> '${g.m}' THEN
+    RAISE EXCEPTION '114 rollback: ${g.sig} is not the text 114 wrote (md5 %) - stop', md5(p.prosrc);
+  END IF;
+  v_new := p.prosrc;
+  FOR v_h IN SELECT * FROM unnest(ARRAY[${[...g.b].reverse().join(', ')}], ARRAY[${[...g.a].reverse().join(', ')}]) h(b, a) LOOP
+    IF (length(v_new) - length(replace(v_new, v_h.b, ''))) <> length(v_h.b) THEN
+      RAISE EXCEPTION '114 rollback: a hunk of 114 is not in ${g.sig} exactly once - stop';
+    END IF;
+    v_new := replace(v_new, v_h.b, v_h.a);
+  END LOOP;
+  IF md5(v_new) <> '${f.live[g.sig]}' THEN
+    RAISE EXCEPTION '114 rollback: ${g.sig} would not be its live text (md5 %)', md5(v_new);
+  END IF;
+  EXECUTE format('CREATE OR REPLACE FUNCTION %s(%s) RETURNS %s LANGUAGE plpgsql %s %s SET search_path = public AS %L',
+    split_part('${g.sig}', '(', 1), pg_get_function_arguments(p.oid), pg_get_function_result(p.oid),
+    CASE p.provolatile WHEN 'i' THEN 'IMMUTABLE' WHEN 's' THEN 'STABLE' ELSE 'VOLATILE' END,
+    CASE WHEN p.prosecdef THEN 'SECURITY DEFINER' ELSE 'SECURITY INVOKER' END, v_new);
+  IF ${md5Of(g.sig)} <> '${f.live[g.sig]}'
+     OR (SELECT proacl::text FROM pg_proc WHERE oid = p.oid) IS DISTINCT FROM p.proacl::text THEN
+    RAISE EXCEPTION '114 rollback proof: ${g.sig} is not back to its live text with its rights';
+  END IF;`).join('\n');
+  return `-- 114 ROLLBACK - GENERATED by worker/migrations/drafts/tools/build-114.mjs from ${SOURCE}.
+-- DO NOT EDIT BY HAND. v_piece_state, plan_split_piece, plan_shipment_problem and plan_board back to their live texts
+-- of 25/11 byte for byte (the hunks of 114 in reverse, md5-proven). REFUSED while a live load split at its loading
+-- point exists: 098's split_not_at_hub would judge its shipment broken at the next change. Join its parts first (or
+-- let them ride). The screen hides "Spase..." on a waiting row by itself (the board no longer says parent_piece_id).
+-- Only with an explicit yes. ASCII. ONE DO block.
+-- EXPECTED: NOTICE "114 ROLLBACK OK".
+DO $do$
+DECLARE
+${f.hunks}  v_h record; v_new text; p pg_proc%rowtype; v_n int;
+BEGIN
+  PERFORM set_config('lock_timeout', '5s', true);
+  IF ${VIEW} <> '${f.viewNew}' THEN
+    RAISE EXCEPTION '114 rollback: v_piece_state is not the view 114 wrote (md5 %) - stop', ${VIEW};
+  END IF;
+  ${SPLIT_AT_START.replace('SELECT count(*)', 'SELECT count(*) INTO v_n')};
+  IF v_n > 0 THEN
+    RAISE EXCEPTION '114 rollback: % load(s) split at their loading point are live - join or assign their parts first', v_n;
+  END IF;
+${oldView(f)}
+  IF ${VIEW} <> '${f.viewOld}' THEN
+    RAISE EXCEPTION '114 rollback proof: v_piece_state is not 071''s view again (md5 %)', ${VIEW};
+  END IF;
+${blocks}
+  PERFORM pg_notify('pgrst', 'reload schema');
+  RAISE NOTICE '114 ROLLBACK OK';
+END $do$;
+`;
+}
+
+export const RB_DRY = {
+  source: ROLLBACK, target: '114_plan_split_at_loading_rollback_dryrun.sql', name: 'DRY RUN 114 ROLLBACK',
+  header: `-- 114 ROLLBACK DRY RUN - GENERATED by worker/migrations/drafts/tools/build-114.mjs from ${ROLLBACK}.
+-- DO NOT EDIT BY HAND. The rollback's block verbatim, ending with a deliberate error: NOTHING is kept. ASCII. ONE DO block.
+-- EXPECTED: NOTICE "114 ROLLBACK OK" then ERROR: P0001: DRY RUN 114 ROLLBACK finished - EVERYTHING UNDONE ...
+--   split LIVE_P, problem LIVE_S, board LIVE_B, view LIVE_V`,
+  epilogue: DRY.epilogue.replace('114 ran:', 'rollback ran:'),
+};
+
+export function buildVerify(src) {
+  const f = facts(src);
+  const ok = f.gen.map((g) => `${md5Of(g.sig)} = '${g.m}'`).join('\n                AND ');
+  return `-- 114 VERIFY - GENERATED by worker/migrations/drafts/tools/build-114.mjs from ${SOURCE}. Read only (SELECT). One row.
+-- EXPECTED after 114: applied = '114 in place', worker_execute true; split_at_start = loads split at their loading
+-- point (0 right after the run, grows with use); parts_waiting = their parts still without a truck (each its own
+-- "PROS ANATHESI" line); parts_stock = 0 (such a part is never stock). Before 114: applied = 'before 114'.
+SELECT CASE WHEN ${VIEW} = '${f.viewNew}'
+                AND ${ok} THEN '114 in place'
+            WHEN ${VIEW} = '${f.viewOld}' THEN 'before 114'
+            ELSE '114 PARTLY APPLIED OR CHANGED - stop, send this row to the coordinator' END AS applied,
+       has_function_privilege('service_role', 'public.plan_split_piece(jsonb,text,text)', 'EXECUTE') AS worker_execute,
+       (${SPLIT_AT_START}) AS split_at_start,
+       (SELECT count(*) FROM public.v_piece_state ps JOIN public.v_piece_pos pp ON pp.piece_id = ps.piece_id
+         WHERE ps.parent_piece_id IS NOT NULL AND pp.eff_last_leg_id IS NULL AND NOT ps.at_hub) AS parts_waiting,
+       (SELECT count(*) FROM public.v_piece_state ps JOIN public.v_piece_pos pp ON pp.piece_id = ps.piece_id
+         WHERE ps.is_stock AND pp.eff_last_leg_id IS NULL AND NOT ps.at_hub) AS parts_stock;
+`;
+}
+
+export function buildAll() {
+  const src = fs.readFileSync(path.join(DIR, SOURCE), 'utf8');
+  const f = facts(src);
+  const m = Object.fromEntries(f.gen.map((g) => [g.sig.slice(12, 17), g]));   // split / shipm / board
+  const G = { P: m['split'], S: m['shipm'], B: m['board'] };
+  const dry = { ...DRY, header: DRY.header.replace('GEN_P', G.P.m).replace('GEN_S', G.S.m).replace('GEN_B', G.B.m).replace('GEN_V', f.viewNew) };
+  const rbd = { ...RB_DRY, header: RB_DRY.header.replace('LIVE_P', f.live[G.P.sig]).replace('LIVE_S', f.live[G.S.sig])
+    .replace('LIVE_B', f.live[G.B.sig]).replace('LIVE_V', f.viewOld) };
+  const rb = buildRollback(src);
+  return { [DRY.target]: buildDryRun(src, dry), [ROLLBACK]: rb, [RB_DRY.target]: buildDryRun(rb, rbd), [VERIFY]: buildVerify(src) };
+}
+
+// realpath: through a symlink path.resolve would differ and --check could not fail (found on 072b's tool)
+if (process.argv[1] && fs.realpathSync(path.resolve(process.argv[1])) === fileURLToPath(import.meta.url)) {
+  const out = buildAll();
+  for (const [f, s] of Object.entries(out)) if (/[^\x00-\x7f]/.test(s)) { console.error(`${f}: non-ASCII`); process.exit(1); }
+  if (process.argv.includes('--check')) {
+    const drift = Object.entries(out).filter(([f, s]) => !fs.existsSync(path.join(DIR, f)) || fs.readFileSync(path.join(DIR, f), 'utf8') !== s);
+    if (drift.length) { console.error('drift: ' + drift.map(([f]) => f).join(', ')); process.exit(1); }
+    console.log('0 drift');
+    process.exit(0);
+  }
+  for (const [f, s] of Object.entries(out)) fs.writeFileSync(path.join(DIR, f), s);
+  console.log('wrote: ' + Object.keys(out).join(', '));
+}
