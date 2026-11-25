@@ -779,6 +779,10 @@ async function loadAll(){
       try{ _waArr=[waGroupBuild(items)]; }
       catch(e){ _waArr=perOrder; window.__waGroupFailed=true; printLogError(e,'print: waGroupBuild'); }
     }
+    // The PDF's file name (pdfFileTitle). The carrier is the first order's, as on the group cover.
+    var f0=items[0].orderRec.fields, isP0=computeIsPartner(f0);
+    window._pdfTitle=pdfFileTitle(pdfCarrierOf(f0,isP0),items.map(function(it){var r=it.orderRec.fields['Reference'];return (r&&/[^\/\\:*?"<>|\s]/.test(r))?r:ordNoOf(it.orderRec);}),isP0);
+    document.title=window._pdfTitle;
     renderDocs(htmlArr);
   }catch(err){
     document.getElementById('loading').innerHTML='<span style="color:#DC2626">Error: '+escHtml(err.message)+'</span>';
@@ -1085,6 +1089,31 @@ function vehLineOf(f,isPartner){
     ?[(allPartners.find(function(r){return f['Partner']&&r.id===f['Partner'][0];})||{fields:{}}).fields['Company Name'],f['Partner Truck Plates']].filter(Boolean).join(' · ')
     :(function(){var d=allDrivers.find(function(r){return f['Driver']&&r.id===f['Driver'][0];}),tk=allTrucks.find(function(r){return f['Truck']&&r.id===f['Truck'][0];}),tr=allTrailers.find(function(r){return f['Trailer']&&r.id===f['Trailer'][0];});
       return [(d&&d.fields['Full Name']),[(tk&&tk.fields['License Plate']),(tr&&tr.fields['License Plate'])].filter(Boolean).join(' / ')].filter(Boolean).join(' · ');})();
+}
+// Owner 25/11: «Save as PDF» names the file after document.title, which was the
+// fixed «Petras Group — Εκτύπωση» for every sheet — a folder of identical
+// names. The title is now «<carrier> - <Reference>»: the partner's company, or
+// for the own fleet the driver AND the truck plate (owner's choice, 25/11).
+// Reference is the client's order number ('Order Number' does not exist);
+// 'Order No' / the record id stand in only when it is empty, so a title is
+// never blank. A group lists every member's reference (the packet is one PDF).
+function pdfCarrierOf(f,isPartner){
+  if(isPartner){
+    var p=allPartners.find(function(r){return f['Partner']&&r.id===f['Partner'][0];});
+    return (p&&p.fields['Company Name'])||'';
+  }
+  var d=allDrivers.find(function(r){return f['Driver']&&r.id===f['Driver'][0];}),
+      tk=allTrucks.find(function(r){return f['Truck']&&r.id===f['Truck'][0];});
+  return [(d&&d.fields['Full Name']),(tk&&tk.fields['License Plate'])].filter(Boolean).join(' ');
+}
+function pdfFileTitle(carrier,refs,isPartner){
+  // Characters no file system accepts (Windows is the strictest) become a space.
+  var clean=function(s){return String(s==null?'':s).replace(/[\/\\:*?"<>|\u0000-\u001F]/g,' ').replace(/\s+/g,' ').trim();};
+  var who=clean(carrier)||(isPartner?'Partner Assignment Order':'Εντολή Οδηγού');
+  var seen={}, list=(refs||[]).map(clean).filter(function(r){return r&&!seen[r]&&(seen[r]=1);});
+  var refTxt=list.length>3?list.slice(0,3).join(', ')+' +'+(list.length-3):list.join(', ');
+  // A trailing dot or space is dropped by Windows; keep the name tidy.
+  return (refTxt?who+' - '+refTxt:who).slice(0,150).replace(/[.\s]+$/,'');
 }
 function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N of a group
   var f=orderRec.fields;
@@ -1513,7 +1542,7 @@ function renderDocs(htmlArr){
   if(shBtn&&window.attachShareMenu){
     attachShareMenu(shBtn,{
       title:window._shTitle||'PETRAS GROUP',
-      fileName:window._shTitle||'petras-doc',
+      fileName:window._pdfTitle||window._shTitle||'petras-doc', // same name as «Save as PDF»
       getText:function(){return _waArr.join('\n\n————————\n\n');},
       // Το PDF ΕΙΝΑΙ αυτή η σελίδα: ο Worker την αποδίδει με τα ΙΔΙΑ params.
       pdfUrl:function(){return PROXY_URL+'/print/pdf'+location.search;},
