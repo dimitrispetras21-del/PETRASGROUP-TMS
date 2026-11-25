@@ -303,7 +303,7 @@ async function render() {
   // board never waits for them, it paints again when they land, and a failure is said in _refHTML (principle 1)
   if (typeof REF_DATA !== 'undefined' && !REF_DATA._loaded && typeof preloadReferenceData === 'function') {
     preloadReferenceData().then(() => { _refErr = null; }, (e) => { _refErr = e || { message: 'άγνωστο σφάλμα' }; })
-      .then(() => { if (seq === _seq && active() && _board) paint(); });
+      .then(() => { if (seq === _seq && active() && _board && _refChanged()) paint(); });
   }
   if (seq !== _seq || !active()) return;               // a newer render, or another page, owns the screen now
   if (err && err._sessionGone) return;                  // the login page is on its way; nothing to draw
@@ -505,6 +505,17 @@ function _modelOpts() {
   const co = coordOf();
   if (co) mo.coord = co;
   return mo;
+}
+// After the reference data lands: paint again only when it changes what the board shows (a row becomes a local pickup,
+// or the failure strip appears) and nothing is open on it — a paint closes the open menu / window (the form and compose
+// rigs caught a «+» or a form closed under the user's click). Otherwise the next paint (every save, every week) has it.
+function _refChanged() {
+  if (!_m || document.querySelector('.wn5-dlg, .wi4-dlg[role="dialog"], .wn5-menu')) return false;
+  if (_refErr) return !!_refHTML(_m);
+  let m2 = null;
+  try { m2 = L().model(_board, _modelOpts()); } catch (_) { return false; }
+  const loc = (m) => m.days.flatMap((d) => d.rows).filter((r) => r.pickupLocal).map((r) => r.key).join();
+  return loc(m2) !== loc(_m);
 }
 // The coordinates of a place by its /plan id, for WN5L.localPlace (owner 25/11, local pickups): /plan/lookups carries
 // none, so the place's legacy id is looked up in the reference LOCATIONS (Latitude / Longitude, core/api.js
