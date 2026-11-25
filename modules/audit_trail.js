@@ -251,6 +251,8 @@ const _AUDIT_FIELD = {
   partner_id:               'Συνεργάτης',
   partner_rate:             'Τιμή συνεργάτη',
   partner_truck_plates:     'Πινακίδες συνεργάτη',
+  partner_plates:           'Πινακίδες συνεργάτη',   // 115: the national trip's free text (owner 25/11)
+  partner_driver:           'Οδηγός συνεργάτη',
   is_partner_trip:          'Δρομολόγιο συνεργάτη',
   location_id:              'Τοποθεσία',
   assigned_at:              'Ανατέθηκε',

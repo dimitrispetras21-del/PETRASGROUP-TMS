@@ -992,5 +992,82 @@ async function rt_expect({ browser, origin, ok, scn, shots }) {
   await page.context().close();
 }
 
-K.run({ scenarios: { own_new, own_join, only_hours, partner, accept_busy, vehicle, rate2, handover, veroia_list, veroia_new, f61, f54, veroia_later, pr3b, veroia_busy, veroia_fixes, busy3, fit, sotiris_late, sotiris_warn, sotiris_esc, sotiris_hub_after, rt_expect }, globals: ['WN5', 'WN5Act', 'WN5Assign', 'WN5Hand'],
+// 115 (owner 25/11 «on the trip»): the partner's «Πινακίδες» and «Οδηγός», free text under the company. Before 115
+// the board names neither key and no field is drawn (a key the base would refuse is never offered); after it the Tab
+// order is truck → trailer → driver → partner → plates → driver → fee, the new trip carries what was typed, the vehicle
+// form sends both keys (a present key wins, even null), and the board row says the plates under the company.
+const withPtx = (b, vals) => { for (const c of b.cycles) Object.assign(c, { partner_plates: null, partner_driver: null }, (vals || {})[c.rt_id] || {}); return b; };
+const VP1440 = { width: 1440, height: 900 };   // the before / after screenshots of the PR
+async function partner_text({ browser, origin, ok, scn, shots }) {
+  // before 115: no field, no key
+  let { page, S } = await K.openApp(browser, origin, { board: board(), plan: { 'POST /plan/legs': async () => OK('plan_put_group') }, viewport: VP1440 });
+  await openWaiting(page, 4101);
+  await pickIn(page, 'pt', 'Partner', 'Partner Test 01');
+  ok(scn, 'before 115 (the board names no partner_plates): no «Πινακίδες» / «Οδηγός» field of the partner', !(await K.count(page, `${DLG} [data-ppl], ${DLG} [data-pdr]`)));
+  await page.fill(`${DLG} [data-rate]`, '300');
+  await page.click(`${DLG} [data-act="save"]`);
+  await page.waitForTimeout(400);
+  let w = saves(S);
+  ok(scn, 'before 115: new_rt without partner_plates / partner_driver', w.length === 1 && !('partner_plates' in w[0].body.target.new_rt) && !('partner_driver' in w[0].body.target.new_rt), w.map((x) => x.raw));
+  await page.context().close();
+
+  // after 115: the fields, their order, the body of a new trip
+  ({ page, S } = await K.openApp(browser, origin, { board: withPtx(board()), plan: { 'POST /plan/legs': async () => OK('plan_put_group') }, viewport: VP1440 }));
+  await openWaiting(page, 4101);
+  const order = await page.evaluate((s) => [...document.querySelectorAll(`${s} input[data-in], ${s} input[data-ppl], ${s} input[data-pdr], ${s} input[data-rate]`)]
+    .map((i) => i.dataset.in || (i.hasAttribute('data-ppl') ? 'ppl' : i.hasAttribute('data-pdr') ? 'pdr' : 'rate')), DLG);
+  ok(scn, 'the Tab order of the fields: tk tl dr pt ppl pdr rate', order.join(' ') === 'tk tl dr pt ppl pdr rate', order);
+  await pickIn(page, 'pt', 'Partner', 'Partner Test 01');
+  const foc = await page.evaluate(() => (document.activeElement && document.activeElement.hasAttribute('data-ppl')) || false);
+  ok(scn, 'after the company the cursor is in «Πινακίδες»', foc);
+  await page.keyboard.type('  TST-P 101 ');
+  await page.keyboard.press('Tab');
+  await page.keyboard.type('Driver  P1');
+  await page.keyboard.press('Tab');
+  const onRate = await page.evaluate(() => (document.activeElement && document.activeElement.hasAttribute('data-rate')) || false);
+  ok(scn, 'Tab: plates → driver → fee', onRate);
+  await page.keyboard.type('300');
+  if (shots) await (await page.$(DLG)).screenshot({ path: shots + '/partner-text.png' });
+  await page.click(`${DLG} [data-act="save"]`);
+  await page.waitForTimeout(400);
+  w = saves(S);
+  ok(scn, 'new_rt PARTNER 51, rate 300, plates «TST-P 101», driver «Driver P1» (trimmed, spaces folded)', w.length === 1
+    && JSON.stringify(w[0].body.target.new_rt) === JSON.stringify({ trip_type: 'PARTNER', partner_id: 51, partner_rate: 300, partner_plates: 'TST-P 101', partner_driver: 'Driver P1' }), w.map((x) => x.raw));
+  await page.context().close();
+
+  // the vehicle form of a partner trip: prefilled, save off until a change, both keys sent; another company empties them
+  const pb = partnerBoard(null);
+  for (const c of pb.cycles) for (const g of c.segments) delete g.partner_rate_anodos;   // one fee field (before 089's key)
+  withPtx(pb, { 101: { partner_plates: 'TST-P 111' }, 102: { partner_plates: 'TST-P 222', partner_driver: 'Driver P2' } });
+  ({ page, S } = await K.openApp(browser, origin, { board: pb, plan: { 'PATCH /plan/rt/101': async () => OK('plan_rt_update') }, viewport: VP1440 }));
+  const tiles = await page.evaluate(() => [...document.querySelectorAll('#content .wi4-box.par')].map((b) => b.textContent.replace(/\s+/g, ' ').trim()));
+  ok(scn, 'the board: two trucks of one partner differ by their plates under the company', tiles.some((t) => /Partner Test 01\s*TST-P 111/.test(t)) && tiles.some((t) => /TST-P 222 · Driver P2/.test(t)), tiles);
+  if (shots) await page.screenshot({ path: shots + '/partner-text-board.png' });
+  await page.evaluate(() => WN5Act.assign(null, { entry: 'menu', rtId: 101 }));
+  await page.waitForSelector(DLG, { timeout: 4000 });
+  const pl = await field(page, 'ppl'), pd = await field(page, 'pdr');
+  ok(scn, 'prefilled from the trip: «TST-P 111», driver empty', pl && pl.val === 'TST-P 111' && pd && pd.val === '', { pl, pd });
+  let f = await foot(page);
+  ok(scn, 'unchanged: save off', f.off, f);
+  await page.fill(`${DLG} [data-pdr]`, 'Driver P3');
+  f = await foot(page);
+  ok(scn, 'a driver typed: save on', !f.off, f);
+  await page.click(`${DLG} [data-act="save"]`);
+  await page.waitForTimeout(400);
+  w = saves(S);
+  ok(scn, 'PATCH /plan/rt/101 {set: PARTNER 51, rate 700, plates «TST-P 111», driver «Driver P3»}', w.length === 1
+    && JSON.stringify(w[0].body) === JSON.stringify({ set: { trip_type: 'PARTNER', partner_id: 51, partner_rate: 700, partner_plates: 'TST-P 111', partner_driver: 'Driver P3' } }), w.map((x) => x.raw));
+  await page.evaluate(() => WN5Act.assign(null, { entry: 'menu', rtId: 101 }));
+  await page.waitForSelector(DLG, { timeout: 4000 });
+  await page.fill(`${DLG} [data-ppl]`, '   ');
+  await page.click(`${DLG} [data-act="save"]`);
+  await page.waitForTimeout(400);
+  w = saves(S);
+  ok(scn, 'plates emptied: partner_plates null (a present key wins, even null)', w.length === 2 && w[1].body.set.partner_plates === null && w[1].body.set.partner_driver === null, w.map((x) => x.raw));
+  const t = await dlgText(page);
+  ok(scn, 'no RT code in the form', !jargon(t || '').length, t);
+  await page.context().close();
+}
+
+K.run({ scenarios: { own_new, own_join, only_hours, partner, accept_busy, vehicle, rate2, handover, veroia_list, veroia_new, f61, f54, veroia_later, pr3b, veroia_busy, veroia_fixes, busy3, fit, sotiris_late, sotiris_warn, sotiris_esc, sotiris_hub_after, rt_expect, partner_text }, globals: ['WN5', 'WN5Act', 'WN5Assign', 'WN5Hand'],
   go: 'the assignment form (own new / join / only / hours / F39 / partner / vehicle / F51-F61 / F54 / F56 / 089 two fees), ✈ «Αλλαγή οχήματος…» and the Veroia board v2 «Νέο φορτίο» hold' });

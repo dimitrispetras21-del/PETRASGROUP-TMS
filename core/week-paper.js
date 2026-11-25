@@ -345,7 +345,9 @@ function natlModel(board, m, o) {
   const truck = (r, c) => {
     const t = (r.tiles || [])[0] || { type: 'un' };
     const more = Math.max(0, (r.tiles || []).length - 1);
-    if (t.type === 'par') return { kind: 'par', name: t.line1 || '—', more };
+    // 115 (owner 25/11): the partner's plates (and driver) the dispatcher typed on the trip; a trip of several
+    // segments keeps the name alone (its tile line 2 is a segment's rate, never printed here)
+    if (t.type === 'par') return { kind: 'par', name: t.line1 || '—', plates: (!more && t.line2) || null, more };
     if (t.type === 'own') { const nd = c ? !c.driver : false; return { kind: 'own', plate: String(t.line1 || '—').split(' · ')[0], name: nd ? '' : String(t.line2 || ''), noDriver: nd, more }; }   // the name stays the tile's: a segment's own driver
     return { kind: 'none' };
   };
@@ -451,7 +453,7 @@ function _legHTML(l, kind) {
 function _natTruckHTML(t) {
   if (!t || t.kind === 'none') return '<td class="tkc"><div class="tk x">Χωρίς φορτηγό</div></td>';
   const more = t.more ? `<span class="more">+${t.more}</span>` : '';
-  if (t.kind === 'par') return `<td class="tkc"><div class="tk p"><span class="pl">ΣΥΝ</span><span class="dr">${_esc(t.name)}</span>${more}</div></td>`;
+  if (t.kind === 'par') return `<td class="tkc"><div class="tk p"><span class="pl">ΣΥΝ</span><span class="dr">${_esc(t.name)}</span>${t.plates ? `<span class="tr">${_esc(t.plates)}</span>` : ''}${more}</div></td>`;
   return `<td class="tkc"><div class="tk"><span class="pl">${_esc(t.plate)}</span>${t.noDriver ? '<span class="gap">χωρίς οδηγό</span>' : `<span class="dr">${_esc(t.name)}</span>`}${more}</div></td>`;
 }
 function natlHTML(p) {
