@@ -5,7 +5,7 @@
 -- Short location names (owner 25/11/2026): the shortest brand people know;
 -- the place is added only when the same brand has more than one location (pickers show the
 -- city under the name, core/form-helpers.js:25).
--- Paste the WHOLE file at once. The rename is a single DO block on purpose: the Supabase
+-- Written to be pasted at once (it ran in two steps, see the top). The rename is one DO block on purpose: the Supabase
 -- SQL editor is not atomic across statements and has no temp tables, while one DO block
 -- either changes all 1303 rows or, on any RAISE, none of them.
 -- Guard on the old name: a location edited after this draft was written makes the count
@@ -19,6 +19,9 @@ CREATE TABLE IF NOT EXISTS public.locations_name_backup_20261125 (
   id bigint PRIMARY KEY, old_name text NOT NULL, new_name text NOT NULL,
   changed_at timestamptz NOT NULL DEFAULT now());
 REVOKE ALL ON public.locations_name_backup_20261125 FROM anon, authenticated;
+-- RLS on, no policies: closed by default like every new table (principle 5); service_role still reads it.
+-- PENDING owner's yes (code review 25/11): not yet run on the live table.
+ALTER TABLE public.locations_name_backup_20261125 ENABLE ROW LEVEL SECURITY;
 
 DO $$
 DECLARE v_total int; v_match int; v_done int;
@@ -1353,6 +1356,14 @@ END $$;
 -- SELECT count(*) FROM public.locations l JOIN public.locations_name_backup_20261125 b
 --   ON b.id = l.id WHERE l.name = b.new_name;
 
--- Rollback (only if needed):
--- UPDATE public.locations l SET name = b.old_name FROM public.locations_name_backup_20261125 b
---  WHERE l.id = b.id AND l.name = b.new_name;
+-- Rollback (only if needed). It says how many rows it could not restore: a location renamed again
+-- after 25/11 keeps its newer name instead of being overwritten (principle 1: never silent).
+-- DO $$
+-- DECLARE v_back int; v_total int;
+-- BEGIN
+--   SELECT count(*) INTO v_total FROM public.locations_name_backup_20261125;
+--   UPDATE public.locations l SET name = b.old_name FROM public.locations_name_backup_20261125 b
+--    WHERE l.id = b.id AND l.name = b.new_name;
+--   GET DIAGNOSTICS v_back = ROW_COUNT;
+--   RAISE NOTICE 'rollback: % of % restored, % skipped (edited since)', v_back, v_total, v_total - v_back;
+-- END $$;
