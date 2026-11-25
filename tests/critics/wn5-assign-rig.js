@@ -60,7 +60,7 @@ const lineOf = (page) => page.evaluate((s) => {
 }, DLG);
 // the screen words the owner ruled out (31/10): no «κύκλος», no RT code, no «σκέλος / γέφυρα / κομμάτι / τμήμα»
 // («μόνο αυτές οι παλέτες» replaced «μόνο αυτό το κομμάτι» of Figma 2395:8022: owner 31/10, no «κομμάτι» on screen)
-const jargon = (t) => (String(t || '').replace('μόνο αυτές οι παλέτες', '').match(/κύκλ|RT-|σκέλ|γέφυρ|κομμάτ|τμήμα/gi) || []);
+const jargon = (t) => (String(t || '').replace('μόνο αυτό το σημείο', '').match(/κύκλ|RT-|σκέλ|γέφυρ|κομμάτ|τμήμα/gi) || []);
 
 // 1 · own truck, new: free truck + trailer + driver, one line «… · ελεύθερο», one POST /plan/legs with new_rt
 async function own_new({ browser, origin, ok, scn, shots }) {
@@ -104,7 +104,12 @@ async function own_join({ browser, origin, ok, scn, shots }) {
   const t0 = await dlgText(page);
   ok(scn, 'header: the VS, Veroia on its own day (Mon 12/10), its deliveries, 22π, ΚΑΘΟΔΟΣ',
     /VS-T201 · Βέροια Δευ 12\/10 → LARISA TEST Τρί 13\/10 \+1 · 22π/.test(t0) && /ΚΑΘΟΔΟΣ/.test(t0), t0);
-  ok(scn, 'F42: «VS-T201 · 2 παραδόσεις · 22π» with «μόνο αυτές οι παλέτες» unticked', /VS-T201 · 2 παραδόσεις · 22π/.test(t0) && !(await page.isChecked(`${DLG} [data-only]`)), t0);
+  ok(scn, 'F42: «VS-T201 · 2 σημεία · 22π» with «μόνο αυτό το σημείο» unticked', /VS-T201 · 2 σημεία · 22π/.test(t0) && !(await page.isChecked(`${DLG} [data-only]`)), t0);
+  // entry test 25/11 (finding 5): the box names its point, and unticked the points that come along
+  ok(scn, 'finding 5: «μόνο αυτό το σημείο (LARISA TEST 12π)» + «μαζί και: THESSALONIKI TEST 10π»', /μόνο αυτό το σημείο \(LARISA TEST 12π\)/.test(t0) && /μαζί και: THESSALONIKI TEST 10π/.test(t0), t0);
+  // finding 3: the truck field has the focus as the form opens, its list closed until a key
+  const foc = await page.evaluate(() => ({ at: document.activeElement && document.activeElement.getAttribute('data-in'), list: !!document.querySelector('.wn5a-list') }));
+  ok(scn, 'finding 3: the form opens with the focus on «Φορτηγό», no list over the fields', foc.at === 'tk' && !foc.list, JSON.stringify(foc));
   ok(scn, 'pick truck TST-2104 (it loads at Veroia Mon 16:00–18:00)', await pickIn(page, 'tk', '2104', 'TST-2104'));
   const tk = await field(page, 'tk'), tl = await field(page, 'tl'), dr = await field(page, 'dr');
   ok(scn, 'under the truck: «Βέροια 16:00–18:00 · 27π»', /Βέροια 16:00–18:00 · 27π/.test(tk.av), tk);

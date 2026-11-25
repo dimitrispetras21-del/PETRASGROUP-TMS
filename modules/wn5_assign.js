@@ -191,6 +191,13 @@
       const place = end ? (end.location_id === hub ? 'Βέροια' : k.placeCity(end.location_id) || end.location || k.placeName(end.location_id)) : '—';
       opts.push({ cyc: null, after: { iso: last.end_at, day: k.ymdOf(last.end_at), hm: k.hm(last.end_at), place } });
       if (st.side === 'KATHODOS' && end && end.location_id === hub && k.ymdOf(last.end_at) === D) def = opts.length - 1;
+      // entry test 25/11 (finding 8): a truck with a trip earlier in the week was offered «στο ίδιο φορτίο» with that
+      // trip's trailer for a load of a LATER day. A load whose day is after the trip's last stop is a new load by
+      // default; the user still switches with one click.
+      // Only when the trip already has stops on THIS side that end before D: a return (ΑΝΟΔΟΣ) of the same trip, whose
+      // side is still empty, joins as before (code review high)
+      const sideEnd = (last.stops || []).filter((x) => x.side === st.side).map((x) => k.stopDay(x)).filter(Boolean).sort().pop();
+      if (D && sideEnd && D > sideEnd) def = opts.length - 1;
     }
     const i = opts.length ? (st.opt == null ? def : st.opt % opts.length) : 0;
     const o = opts[i] || { cyc: null, after: null };
@@ -596,10 +603,16 @@
     const joinOwn = !!(tg && tg.cyc && st.who === 'own');
     const joinPar = !!(tg && tg.cyc && st.who === 'partner');
     let h = '';
-    // F42: a VS with several deliveries goes whole; «μόνο αυτές οι παλέτες» sends the pressed piece alone
+    // F42: a VS with several deliveries goes whole; the box sends the pressed piece alone. Entry test 25/11 (finding 5):
+    // «μόνο αυτές οι παλέτες» read as a quantity — it is one point of the VS, so it says the point, and unticked it names
+    // the points that come along
     if (st.mode === 'legs' && st.group && st.group.order_id != null && st.items.length > 1 && st.focus) {
-      h += '<div class="wn5a-band"><span>' + _e(st.ref + ' · ' + st.items.length + ' παραδόσεις · ' + WN5L.palText(k.sum(st.items.map((x) => x.pallets)), st.items.filter((x) => x.pallets == null).length) + 'π') + '</span>'
-        + '<label class="wn5a-only"><input type="checkbox" data-only' + (st.only ? ' checked' : '') + '><span>μόνο αυτές οι παλέτες</span></label></div>';
+      const ptOf = (it) => { const n = k.needs(it, false, k.hubId()).find((x) => !x.hub && x.loc != null); return (n ? _place(n.loc) : '—') + ' ' + WN5L.palText(it.pallets, it.pallets == null ? 1 : 0) + 'π'; };
+      const me = st.items.find((x) => x.piece_id === st.focus);
+      const others = st.items.filter((x) => x.piece_id !== st.focus);
+      h += '<div class="wn5a-band"><span>' + _e(st.ref + ' · ' + st.items.length + ' σημεία · ' + WN5L.palText(k.sum(st.items.map((x) => x.pallets)), st.items.filter((x) => x.pallets == null).length) + 'π') + '</span>'
+        + '<label class="wn5a-only"><input type="checkbox" data-only' + (st.only ? ' checked' : '') + '><span>μόνο αυτό το σημείο' + (me ? ' (' + _e(ptOf(me)) + ')' : '') + '</span></label>'
+        + (st.only ? '' : '<span class="wn5a-with" data-with>μαζί και: ' + _e(others.map(ptOf).join(', ')) + '</span>') + '</div>';
     }
     // owner 3/11 (bigger forms, no scroll at a laptop height): the day rows on the left, who executes on the right
     const rows = st.mode !== 'vehicle' ? _rowsHTML(st, pb, tg && tg.cyc, tg && tg.after) : '';
@@ -647,11 +660,23 @@
     const nq = q ? k.norm(q) : '';
     const so = Object.assign({}, st, { who: 'own' });
     const days = px === 'pt' ? null : _busyDays(so);   // once per list, not per option
-    return _list(FIELDS[px].kind).filter((x) => x.active && (!nq || k.norm(x.label).includes(nq))).slice(0, 60).map((x) => {
+    // entry test 25/11 (finding 4): «Ρηγ» listed a driver whose first name holds it above the one whose surname starts
+    // with it, and Enter took the first. A label that starts with the query (the surname, the plate) comes first, then
+    // one with a word that starts with it, then the rest that hold it; the catalogue's order inside each.
+    const ranked = _ranked(_list(FIELDS[px].kind).filter((x) => x.active && (!nq || k.norm(x.label).includes(nq))), nq, k.norm);
+    return ranked.slice(0, 60).map((x) => {
       const a = px === 'pt' ? null : avail(so, px, x.id, days);
       const sub = px === 'pt' ? _lastRate(st, x.id) : (a ? a.txt : '');
       return { id: x.id, label: x.label, sub, cls: a ? a.cls : '', warn: _warn(px, x.id) };
     });
+  }
+  // finding 4 (25/11): starts-with first, then a word that starts with it, then the rest; the given order inside each.
+  // Pure (norm is the board's fhSearchNorm): pinned by tests/wn5-entry-fixes.test.js
+  function _ranked(items, nq, norm) {
+    if (!nq) return items;
+    // the words are cut from the label as written: the board's norm drops spaces and dashes
+    const rank = (lbl) => (norm(lbl).startsWith(nq) ? 0 : String(lbl || '').split(/[\s,.\-·/]+/).some((w) => w && norm(w).startsWith(nq)) ? 1 : 2);
+    return items.map((x, i) => [rank(x.label), i, x]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map((r) => r[2]);
   }
   // owner 25/11 (usability test): a driver not yet in the catalogue blocked the assignment, or the truck went out
   // «χωρίς οδηγό». The driver list offers to create it, by the name typed, when no driver of the catalogue (active or
@@ -765,6 +790,29 @@
       }
       fromJoin = false;
     };
+    // Entry test 25/11 (finding 3): no field had the focus when the form opened (typed keys were lost) and a pick
+    // redrew the form with the focus nowhere, so every field took a mouse click. The focus goes to the first empty
+    // field after `from` in the order truck → trailer → driver → partner → fee, skipping the side that does not
+    // execute; when nothing is left, to the save. Focusing a field opens its list, as a click does.
+    const ORDER = ['tk', 'tl', 'dr', 'pt', 'rate'];
+    let quiet = false;
+    const _focusNext = (from) => {
+      if (d.closed) return;
+      const own = ['tk', 'tl', 'dr'];
+      for (const px of ORDER.slice(from ? ORDER.indexOf(from) + 1 : 0)) {
+        if (st.who === 'own' && !own.includes(px)) continue;
+        if (st.who === 'partner' && own.includes(px)) continue;
+        const el = d.body.querySelector(px === 'rate' ? '[data-rate]' : '[data-in="' + px + '"]');
+        if (!el || el.disabled || el.value.trim()) continue;
+        // focused quietly: its list opens at the first key (or a click), never by itself — an open list over the
+        // fields below took the next click as a pick (rig partner / accept_busy)
+        quiet = true;
+        try { el.focus(); } finally { quiet = false; }
+        return;
+      }
+      const b = d.dlg.querySelector('[data-act="save"]');
+      if (b && !b.disabled) b.focus();
+    };
     // a pick from the list (or an exact name typed); own and partner exclude each other, as one executes
     const choose = (px, id, next) => {
       const f = FIELDS[px];
@@ -779,6 +827,7 @@
         if (px === 'tk') { st.opt = null; _vehicleOf(st); }
       }
       draw(next);
+      if (!next) _focusNext(px);   // a pick by Enter or by the mouse: on to the next empty field
     };
     const openList = (inp) => {
       const px = inp.dataset.in;
@@ -837,7 +886,9 @@
         creating = false;
       }
     }
-    d.dlg.addEventListener('focusin', (ev) => { const t = ev.target; if (t.matches && t.matches('[data-in]')) openList(t); });
+    d.dlg.addEventListener('focusin', (ev) => { const t = ev.target; if (!quiet && t.matches && t.matches('[data-in]')) openList(t); });
+    // a field focused quietly (_focusNext) opens its list on a click too
+    d.dlg.addEventListener('mousedown', (ev) => { const t = ev.target; if (t.matches && t.matches('[data-in]') && document.activeElement === t && (!list || list.px !== t.dataset.in)) openList(t); });
     d.dlg.addEventListener('focusout', (ev) => {
       const t = ev.target;
       if (drawing || !t.matches || !t.matches('[data-in]')) return;
@@ -882,7 +933,9 @@
     });
     d.dlg.addEventListener('keydown', (ev) => {
       const t = ev.target;
-      if (!t.matches || !t.matches('[data-in]') || !list) return;
+      if (!t.matches || !t.matches('[data-in]')) return;
+      if (!list && ev.key === 'ArrowDown') { ev.preventDefault(); openList(t); return; }
+      if (!list) return;
       if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
         ev.preventDefault();
         list.hi = Math.max(0, Math.min(list.opts.length - 1, list.hi + (ev.key === 'ArrowDown' ? 1 : -1)));
@@ -913,6 +966,7 @@
     d.dlg.addEventListener('scroll', () => _dropList(), true);
     draw();
     k.gate(d);
+    _focusNext(null);
     d.st = st;
     return d;
   }
@@ -957,5 +1011,5 @@
       sub: st.who === 'own' ? [_label('tl', st.trailer), _label('dr', st.driver)].filter(Boolean).join(' · ') : '' };
   }
 
-  window.WN5Assign = Object.freeze({ open, pick, forChoice, _build: build, _req: req, _problems: problems, _line: line, _avail: avail, _peak });
+  window.WN5Assign = Object.freeze({ open, pick, forChoice, _build: build, _req: req, _problems: problems, _line: line, _avail: avail, _peak, _ranked });
 })();

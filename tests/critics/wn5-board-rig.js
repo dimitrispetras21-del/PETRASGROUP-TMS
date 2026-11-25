@@ -4032,9 +4032,10 @@ SCN.p2 = async (browser, origin) => {
     await page.evaluate(() => WN5Act.plus(205, 'KATHODOS', document.querySelector('#content .wn5 .wn5-row[data-rt="205"]')));
     await page.waitForTimeout(500);
     const P = bDlg('plus') + ' .wn5-pline[data-piece="4201"]';
-    const w = await soft(page, P + ' .wn5-why');
+    // entry test 25/11 (finding 1): the busy warning is said once above the list, never on the line
+    const w = await soft(page, bDlg('plus') + ' [data-pbusy]:not([hidden])');
     ok(scn, '«+»: the line says «' + T204 + '» in amber before the press, «Πρόσθεσε» on, no RT code',
-      !!w && w.t === T204 && w.soft && w.color === AMBER && noRt(w.t) && (await bOff(page, P + ' [data-act="save"]')) === false, w);
+      !!w && w.t.includes(T204) && w.soft && w.color === AMBER && noRt(w.t) && (await bOff(page, P + ' [data-act="save"]')) === false, w);
     await bClick(page, P + ' [data-act="save"]');
     await page.waitForTimeout(400);
     const c = bCalls(S, 'POST', '/plan/legs');
@@ -4198,7 +4199,7 @@ SCN.busy3 = async (browser, origin) => {
     await page.evaluate(() => WN5Act.plus(206, 'KATHODOS', document.querySelector('#content .wn5 .wn5-row[data-rt="206"]')));
     await page.waitForTimeout(500);
     const P = bDlg('plus') + ' .wn5-pline[data-piece="4201"]';
-    const w = await page.$eval(P + ' .wn5-why', (e) => ({ t: e.innerText, soft: e.classList.contains('wn5-soft') })).catch(() => null);
+    const w = await page.$eval(bDlg('plus') + ' [data-pbusy]:not([hidden])', (e) => ({ t: e.innerText, soft: e.classList.contains('wn5-soft') })).catch(() => null);
     ok(scn, '«+»: the trailer alone is named, amber: «θάλαμος TRL-5103 είναι σε άλλο δρομολόγιο …» (never the truck or driver of RT-T205), «Πρόσθεσε» on',
       !!w && w.soft && /^θάλαμος TRL-5103 είναι σε άλλο δρομολόγιο /.test(w.t) && !/TST-2103|Driver Test 03|\d\d:\d\d|RT-/.test(w.t) && (await bOff(page, P + ' [data-act="save"]')) === false, w);
     await bClick(page, P + ' [data-act="save"]');
