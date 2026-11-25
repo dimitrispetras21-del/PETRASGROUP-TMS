@@ -741,11 +741,29 @@
     // go once every delivery row has its place and none is Veroia (they only fill a Veroia row, which keeps its own
     // fields). A delivery not chosen yet still asks: the «+» of a trip that ends at Veroia opens with the Veroia day
     // first (F57). Hidden in place, so «Φορτηγό» does not jump. ΚΑΘΟΔΟΣ keeps them: its points open against that day.
-    const askV = dir !== 'ANODOS' || raw.some((o) => o.drops.some((r) => r.hub || !r.rec));
+    // Entry test 25/11 (finding 6): the same for a ΚΑΘΟΔΟΣ that does not load at Veroia — its head day stood there with
+    // a «*» and empty. Asked while a loading row has no place yet or one of them is Veroia.
+    const askV = dir === 'ANODOS' ? raw.some((o) => o.drops.some((r) => r.hub || !r.rec)) : raw.some((o) => o.loads.some((r) => r.hub || !r.rec));
     for (const sel of ['[data-vdayl]', '[data-vwinl]']) f.el.querySelector(sel).closest('.wn5f-f').classList.toggle('off', !askV);
     // F44 (F33's rule): with no Veroia stop on the cycle yet, an ΑΝΟΔΟΣ arrival the screen filled follows the order's
     // own loading — its last loading day — until the user types the arrival day
     const vEl = f.el.querySelector('#wn5f-vday');
+    // Entry test 25/11 (finding 6): the head's Veroia day and the Veroia row's own day disagreed (the row changed to
+    // 25/11, the head stayed 24/11). One day: a Veroia row whose day the user typed or picked gives it to the head,
+    // and the head gives it back to every other Veroia row it filled (below)
+    // Whichever of the two the user changed last wins (code review high: the head snapped back to the row): a typed
+    // Veroia row that changed since the last refresh gives its day to the head; a head that changed gives its day to
+    // every Veroia row, typed or not.
+    const headMoved = DAY.test(vEl.value) && f.vSeen !== undefined && vEl.value !== f.vSeen;
+    for (const r of f.el.querySelectorAll('.wn5f-row')) {
+      const rec = (document.getElementById('lv_' + r.dataset.pid) || {}).value || '';
+      const d = r.querySelector('[data-f="day"]');
+      if (!rec || rec !== _hubRec() || d.dataset.auto || !DAY.test(d.value) || d.value === vEl.value) continue;
+      if (headMoved) { d.value = vEl.value; d.dataset.auto = '1'; continue; }
+      if (d.value === d.dataset.seen) continue;
+      vEl.value = d.value; delete vEl.dataset.auto;
+      break;
+    }
     if (dir === 'ANODOS' && vEl.dataset.auto) {
       const last = [...f.el.querySelectorAll('.wn5f-rows[data-k="load"] [data-f="day"]')].map((x) => x.value).filter((v) => DAY.test(v)).sort().pop();
       if (last && last !== vEl.value) vEl.value = last;
@@ -794,7 +812,27 @@
         if (whole && !b.value && vt) b.value = vt;
       }
     });
+    // Entry test 25/11 (finding 6): a ΚΑΘΟΔΟΣ delivery the screen filled stayed BEFORE its loading day until it was
+    // typed. It goes to the order's last loading day + 1; a delivery the user typed keeps its day.
+    if (dir === 'KATHODOS' && addDays) f.el.querySelectorAll('.wn5f-ord').forEach((b) => {
+      const last = [...b.querySelectorAll('.wn5f-rows[data-k="load"] [data-f="day"]')].map((x) => x.value).filter((v) => DAY.test(v)).sort().pop();
+      if (!last) return;
+      for (const r of b.querySelectorAll('.wn5f-rows[data-k="drop"] .wn5f-row')) {
+        // a Veroia row follows the head's Veroia day (above), never this rule
+        if (((document.getElementById('lv_' + r.dataset.pid) || {}).value || '') === _hubRec()) continue;
+        const d = r.querySelector('[data-f="day"]');
+        const typed = d.parentElement && d.parentElement.querySelector('.wn5f-dayx');
+        const want = addDays(last, 1);
+        // only a delivery left BEFORE its loading moves (the finding): a same-day one the screen filled stays, as the
+        // Veroia-day shift (F57) put it
+        // one this rule set (data-p1) keeps following the loading, back too: a day typed key by key passes «15/1» (15
+        // January) on its way to «15/10», and the delivery must not stay where that half-typed day sent it
+        if (d.dataset.auto && !(typed && typed.dataset.raw) && DAY.test(d.value) && (d.value < last || d.dataset.p1) && d.value !== want) { d.value = want; d.dataset.p1 = '1'; moved = true; }
+      }
+    });
     if (moved) raw = _raw(f);
+    f.vSeen = vEl.value;
+    f.el.querySelectorAll('.wn5f-row [data-f="day"]').forEach((d) => { d.dataset.seen = d.value; });
     // a drop section whose rows are all Veroia arrivals heads its window «Άφιξη ως *» (Figma Δ7 2069:7995)
     f.el.querySelectorAll('.wn5f-ord').forEach((b) => {
       const rows = [...b.querySelectorAll('.wn5f-rows[data-k="drop"] .wn5f-row')];
@@ -1622,7 +1660,7 @@
         return _roRowHTML(r, true, v092) + `<div class="wn5f-vsplace"><span class="wn5f-sub">Προορισμός μετά τη Βέροια</span>${fhLocSelect(pid, '', 'WN5Form._locDropNoHub')}`
           + `<button type="button" class="wi4-btn sm" data-act="vs-place" data-pid="${pid}" data-osid="${off ? '' : r.order_stop_id}"${off ? ' disabled' : ''}>Αλλαγή προορισμού</button></div>`;
       }).join('')
-      + (v092 && rows.some((r) => r.piece_id != null) ? `<div class="wn5f-vspal"><button type="button" class="wi4-btn sm" data-act="vs-pal" data-order="${b.order_id}">Ορισμός παλετών</button><span class="wn5f-ok" data-vspalok></span></div>` : '')
+      + (v092 && rows.some((r) => r.piece_id != null) ? `<div class="wn5f-vspal"><button type="button" class="wi4-btn sm" data-act="vs-pal" data-order="${b.order_id}" title="Οι παλέτες αλλάζουν στη διεθνή παραγγελία και ο υπεύθυνος διεθνών ειδοποιείται">Ορισμός παλετών στη διεθνή</button><span class="wn5f-sub">αλλάζει τη διεθνή παραγγελία · ειδοποιείται ο διεθνών · δεν είναι σπάσιμο</span><span class="wn5f-ok" data-vspalok></span></div>` : '')
       + (noStop ? '<div class="wn5f-note">Ο προορισμός αλλάζει εδώ όταν το board φέρνει τη στάση της διεθνούς — ως τότε από τη διεθνή παραγγελία.</div>' : '')
       + `<div class="wn5f-note">${_pal(b.pallets || rows.reduce((a, r) => a + r.pallets, 0))}π · τιμή και τιμολόγηση στη διεθνή παραγγελία · δεν διαγράφεται από εδώ · ημέρα, παλέτες και προορισμός: όποιος μάθει πρώτος — γράφεται και στη διεθνή, ο διεθνών ειδοποιείται</div></div>`;
   }
