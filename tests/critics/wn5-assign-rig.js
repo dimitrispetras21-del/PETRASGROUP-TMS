@@ -1064,6 +1064,25 @@ async function new_driver({ browser, origin, ok, scn, shots }) {
   const dr2 = await field(r2.page, 'dr');
   ok(scn, '403: no driver set (the field keeps the typed name, red), nothing reached /plan', dr2 && dr2.val !== '' && saves(r2.S).length === 0, { dr2, w: saves(r2.S).length });
   await r2.page.context().close();
+
+  // written (201) but the catalogue re-read does not show it: «γράφτηκε …», never «δεν προστέθηκε», and no second create
+  const r3 = await K.openApp(browser, origin, { board: board(), facade: { [`POST ${DRV_TID}`]: async (e) => [200, { id: 'recRigNewDrv97', fields: e.body.fields }] } });
+  await openWaiting(r3.page, 4101);
+  await pickIn(r3.page, 'tk', '2106', 'TST-2106');
+  await r3.page.click(`${DLG} [data-in="dr"]`, { clickCount: 3 });
+  await r3.page.keyboard.type(NAME);
+  await r3.page.waitForSelector('.wn5a-list .wn5a-new', { timeout: 3000 }).catch(() => {});
+  await r3.page.dispatchEvent('.wn5a-list [data-newdr="Internal"]', 'mousedown');
+  await r3.page.waitForTimeout(600);
+  const st3 = await r3.page.evaluate((s) => { const d = document.querySelector(s); return d ? (d.querySelector('.wn5-strip') || {}).textContent || '' : null; }, DLG);
+  ok(scn, 'written, not in the catalogue: «… γράφτηκε, αλλά δεν φάνηκε ακόμη στη λίστα», no «δεν προστέθηκε»', /Ο οδηγός «Driver Rig New» γράφτηκε, αλλά δεν φάνηκε ακόμη στη λίστα/.test(st3 || '') && !/δεν προστέθηκε/.test(st3 || ''), st3);
+  await r3.page.click(`${DLG} [data-in="dr"]`, { clickCount: 3 });
+  await r3.page.keyboard.type(NAME);
+  await r3.page.waitForTimeout(100);
+  const again = await r3.page.evaluate(() => (document.querySelector('.wn5a-list') || {}).textContent || '');
+  ok(scn, 'the same name again: «… γράφτηκε — κλείσε και ξανάνοιξε», no create row, still one POST', /γράφτηκε — κλείσε και ξανάνοιξε/.test(again)
+    && !(await K.count(r3.page, '.wn5a-list .wn5a-new')) && r3.S.facade.filter((x) => x.m === 'POST' && x.tid === DRV_TID).length === 1, again);
+  await r3.page.context().close();
 }
 
 K.run({ scenarios: { own_new, new_driver, own_join, only_hours, partner, accept_busy, vehicle, rate2, handover, veroia_list, veroia_new, f61, f54, veroia_later, pr3b, veroia_busy, veroia_fixes, busy3, fit, sotiris_late, sotiris_warn, sotiris_esc, sotiris_hub_after, rt_expect }, globals: ['WN5', 'WN5Act', 'WN5Assign', 'WN5Hand'],

@@ -38,6 +38,9 @@
   // PlanIds.list maps and sorts the whole catalogue on each call: read once per form (build() empties it), never per
   // option or keystroke (code review high)
   let _lists = {};
+  // names (normalised) of drivers created from this form in this session whose catalogue re-read did not show them yet:
+  // the create row is not offered again for them, so a retry never writes a second identical driver (code review xhigh)
+  const _created = new Set();
   const _list = (kind) => (_lists[kind] || (_lists[kind] = typeof PlanIds === 'undefined' ? [] : PlanIds.list(kind)));
 
   // ═══ the state of one form, snapshotted at open (rule 4 of wn5_actions.js: two presses send the same bytes) ═══
@@ -692,6 +695,7 @@
     const k = K(), nq = k.norm(name);
     const same = _list('driver').find((x) => k.norm(x.label) === nq);
     if (same) return same.active ? '' : '<div class="wn5a-none">Ο οδηγός «' + _e(same.label) + '» είναι ανενεργός — ζήτα να ενεργοποιηθεί στους Οδηγούς</div>';
+    if (_created.has(nq)) return '<div class="wn5a-none">Ο οδηγός «' + _e(name) + '» γράφτηκε — κλείσε και ξανάνοιξε τη φόρμα για να τον διαλέξεις</div>';
     if (nOpts && !name.includes(' ')) return '';
     return '<div class="wn5a-new"><span>+ Νέος οδηγός «' + _e(name) + '»</span>'
       + '<button type="button" data-newdr="Internal">Εσωτερικός</button><button type="button" data-newdr="External">Εξωτερικός</button></div>';
@@ -819,7 +823,9 @@
       if (b && !b.disabled) b.focus();
     };
     // a pick from the list (or an exact name typed); own and partner exclude each other, as one executes
+    let picks = 0;   // a pick made while a driver create waits wins over the create's own pick (code review xhigh)
     const choose = (px, id, next) => {
+      picks++;
       const f = FIELDS[px];
       st[f.key] = id;
       st.typed[px] = '';
@@ -878,18 +884,31 @@
       if (creating || name.length < 2 || !_live()) return;
       creating = name;
       if (list) list.el.innerHTML = _waitHTML(name);
+      const seq = picks;
+      // the form closed during the wait: the board's host says it, never a detached dialog
+      const say = (code, text) => WN5Act.strip(d.dlg.isConnected ? d.msg : K().boardHost(), K().clientErr(code, text));
       try {
-        const rec = await createDriverQuick(name, type);
+        let rec;
+        try {
+          rec = await createDriverQuick(name, type);
+        } catch (e) {
+          _dropList();
+          if (e && e._sessionGone) return;   // the session flow (core/api.js) already took the page
+          say('driver_create', 'Ο οδηγός «' + name + '» δεν προστέθηκε: ' + (e && e.message ? e.message : 'άγνωστο σφάλμα'));
+          return;
+        }
+        // written from here on: a failure below is never «δεν προστέθηκε»
+        _created.add(K().norm(name));
         const ids = await PlanIds.load();
         _lists = {};
         const hit = _list('driver').find((x) => x.legacy_id === rec.id);
-        if (!hit) throw new Error((ids && ids.err && ids.err.message) || 'Ο οδηγός «' + name + '» γράφτηκε, αλλά δεν φάνηκε στη λίστα — κλείσε και ξανάνοιξε τη φόρμα');
-        choose('dr', hit.id, null);
-      } catch (e) {
-        _dropList();
-        if (e && e._sessionGone) return;   // the session flow (core/api.js) already took the page
-        // the form closed during the wait: the board's host says it, never a detached dialog
-        WN5Act.strip(d.dlg.isConnected ? d.msg : K().boardHost(), K().clientErr('driver_create', 'Ο οδηγός «' + name + '» δεν προστέθηκε: ' + (e && e.message ? e.message : 'άγνωστο σφάλμα')));
+        if (!hit) {
+          _dropList();
+          say('driver_listed', 'Ο οδηγός «' + name + '» γράφτηκε, αλλά ' + (ids && ids.err ? 'οι κατάλογοι δεν ξαναδιαβάστηκαν' : 'δεν φάνηκε ακόμη στη λίστα') + ' — κλείσε και ξανάνοιξε τη φόρμα για να τον διαλέξεις');
+          return;
+        }
+        _created.delete(K().norm(name));
+        if (d.dlg.isConnected && picks === seq) choose('dr', hit.id, null);
       } finally {
         creating = '';
       }
@@ -950,6 +969,7 @@
         list.el.innerHTML = creating && list.px === 'dr' ? _waitHTML(creating) : _listHTML(list.opts, list.px, list.hi, list.q);
       } else if (ev.key === 'Enter') {
         ev.preventDefault();
+        if (creating && list.px === 'dr') return;   // the list shows only «Δημιουργία…»: nothing to pick
         const o = list.opts[list.hi];
         if (o) choose(list.px, o.id, null);
       }
