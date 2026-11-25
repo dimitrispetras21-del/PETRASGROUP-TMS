@@ -781,7 +781,7 @@ async function loadAll(){
     }
     // The PDF's file name (pdfFileTitle). The carrier is the first order's, as on the group cover.
     var f0=items[0].orderRec.fields, isP0=computeIsPartner(f0);
-    window._pdfTitle=pdfFileTitle(pdfCarrierOf(f0,isP0),items.map(function(it){return it.orderRec.fields['Reference']||ordNoOf(it.orderRec);}),isP0);
+    window._pdfTitle=pdfFileTitle(pdfCarrierOf(f0,isP0),items.map(function(it){var r=it.orderRec.fields['Reference'];return (r&&/[^\/\\:*?"<>|\s]/.test(r))?r:ordNoOf(it.orderRec);}),isP0);
     document.title=window._pdfTitle;
     renderDocs(htmlArr);
   }catch(err){
