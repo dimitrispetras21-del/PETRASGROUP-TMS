@@ -246,7 +246,7 @@ body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 <div id="loading"><div class="spin"></div>Loading…</div>
 <div id="doc"></div>
 
-<script src="core/share-helpers.js?v=1787730518"></script>
+<script src="core/share-helpers.js?v=1795630000"></script>
 <script src="core/countries.js"></script>
 <script src="core/load-group.js?v=1794740000"></script>
 <script>
@@ -780,9 +780,10 @@ async function loadAll(){
       catch(e){ _waArr=perOrder; window.__waGroupFailed=true; printLogError(e,'print: waGroupBuild'); }
     }
     // The PDF's file name (pdfFileTitle). The carrier is the first order's, as on the group cover.
+    // Without share-helpers.js the sheet still prints, under the old generic title (a name is never worth the sheet).
     var f0=items[0].orderRec.fields, isP0=computeIsPartner(f0);
-    window._pdfTitle=pdfFileTitle(pdfCarrierOf(f0,isP0),items.map(function(it){var r=it.orderRec.fields['Reference'];return (r&&/[^\/\\:*?"<>|\s]/.test(r))?r:ordNoOf(it.orderRec);}),isP0);
-    document.title=window._pdfTitle;
+    if(typeof pdfFileTitle==='function') window._pdfTitle=pdfFileTitle(pdfCarrierOf(f0,isP0),items.map(function(it){var r=it.orderRec.fields['Reference'];return (r&&/[^\/\\:*?"<>|\s]/.test(r))?r:ordNoOf(it.orderRec);}),isP0?'Partner Assignment Order':'Εντολή Οδηγού');
+    if(window._pdfTitle) document.title=window._pdfTitle;
     renderDocs(htmlArr);
   }catch(err){
     document.getElementById('loading').innerHTML='<span style="color:#DC2626">Error: '+escHtml(err.message)+'</span>';
@@ -1090,13 +1091,12 @@ function vehLineOf(f,isPartner){
     :(function(){var d=allDrivers.find(function(r){return f['Driver']&&r.id===f['Driver'][0];}),tk=allTrucks.find(function(r){return f['Truck']&&r.id===f['Truck'][0];}),tr=allTrailers.find(function(r){return f['Trailer']&&r.id===f['Trailer'][0];});
       return [(d&&d.fields['Full Name']),[(tk&&tk.fields['License Plate']),(tr&&tr.fields['License Plate'])].filter(Boolean).join(' / ')].filter(Boolean).join(' · ');})();
 }
-// Owner 25/11: «Save as PDF» names the file after document.title, which was the
-// fixed «Petras Group — Εκτύπωση» for every sheet — a folder of identical
-// names. The title is now «<carrier> - <Reference>»: the partner's company, or
-// for the own fleet the driver AND the truck plate (owner's choice, 25/11).
-// Reference is the client's order number ('Order Number' does not exist);
-// 'Order No' / the record id stand in only when it is empty, so a title is
-// never blank. A group lists every member's reference (the packet is one PDF).
+// Owner 25/11: the PDF's file name (document.title) is «<carrier> - <Reference>»
+// (window.pdfFileTitle, core/share-helpers.js: one rule with the national sheet).
+// The carrier: the partner's company, or for the own fleet the driver AND the
+// truck plate (owner's choice, 25/11). Reference is the client's order number
+// ('Order Number' does not exist); 'Order No' / the record id stand in only
+// when it is empty. A group lists every member's reference (one PDF).
 function pdfCarrierOf(f,isPartner){
   if(isPartner){
     var p=allPartners.find(function(r){return f['Partner']&&r.id===f['Partner'][0];});
@@ -1105,15 +1105,6 @@ function pdfCarrierOf(f,isPartner){
   var d=allDrivers.find(function(r){return f['Driver']&&r.id===f['Driver'][0];}),
       tk=allTrucks.find(function(r){return f['Truck']&&r.id===f['Truck'][0];});
   return [(d&&d.fields['Full Name']),(tk&&tk.fields['License Plate'])].filter(Boolean).join(' ');
-}
-function pdfFileTitle(carrier,refs,isPartner){
-  // Characters no file system accepts (Windows is the strictest) become a space.
-  var clean=function(s){return String(s==null?'':s).replace(/[\/\\:*?"<>|\u0000-\u001F]/g,' ').replace(/\s+/g,' ').trim();};
-  var who=clean(carrier)||(isPartner?'Partner Assignment Order':'Εντολή Οδηγού');
-  var seen={}, list=(refs||[]).map(clean).filter(function(r){return r&&!seen[r]&&(seen[r]=1);});
-  var refTxt=list.length>3?list.slice(0,3).join(', ')+' +'+(list.length-3):list.join(', ');
-  // A trailing dot or space is dropped by Windows; keep the name tidy.
-  return (refTxt?who+' - '+refTxt:who).slice(0,150).replace(/[.\s]+$/,'');
 }
 function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N of a group
   var f=orderRec.fields;

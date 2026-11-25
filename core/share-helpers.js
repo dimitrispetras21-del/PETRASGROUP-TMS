@@ -221,6 +221,22 @@
     }, true);
   }
 
+  // Owner 25/11: «Save as PDF» names the file after document.title, which was one fixed name for every sheet. ONE rule
+  // for the international sheets (print.html) and the national driver sheet (modules/wn5_sheet.js), both of which load
+  // this file: «<carrier> - <references>». A missing carrier falls back to `fallback` (the kind of sheet), so the
+  // name is never blank. Characters no file system accepts (Windows is the strictest) become a space. A group lists
+  // its unique references, at most three then «+N». Also safe inside <title> markup: no < > " survive.
+  function pdfFileTitle(carrier, refs, fallback) {
+    const clean = (s) => String(s == null ? '' : s).replace(/[\/\\:*?"<>|\u0000-\u001F]/g, ' ').replace(/\s+/g, ' ').trim();
+    const who = clean(carrier) || clean(fallback) || 'Petras Group';
+    const seen = new Set();
+    const list = (refs || []).map(clean).filter((r) => r && !seen.has(r) && seen.add(r));
+    const refTxt = list.length > 3 ? list.slice(0, 3).join(', ') + ' +' + (list.length - 3) : list.join(', ');
+    // a trailing dot or space is dropped by Windows; keep the name tidy
+    return Array.from(refTxt ? who + ' - ' + refTxt : who).slice(0, 150).join('').replace(/[.\s]+$/, '');
+  }
+
   window.attachShareMenu = attachShareMenu;
   window.shareMenuDelegate = shareMenuDelegate;
+  window.pdfFileTitle = pdfFileTitle;
 })();

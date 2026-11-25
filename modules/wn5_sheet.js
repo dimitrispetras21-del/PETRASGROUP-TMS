@@ -297,6 +297,19 @@
   }
 
   // ── the browser side ───────────────────────────────────────────────────────────────────────────────────────
+  // Owner 25/11: the PDF's file name (the window's title) is «<carrier> - <references>», the international sheets' rule
+  // (window.pdfFileTitle, core/share-helpers.js), not the cycle code: the partner, or the driver and the truck plate.
+  // The references are the stops' (a VS stop: the international's); a sheet with none names its week instead.
+  // Without share-helpers.js: the old title (`old`), never a broken print.
+  function fileTitle(ls, meta, old) {
+    if (typeof pdfFileTitle !== 'function') return old;
+    const h = ls.find((l) => l.t === 'head') || {};
+    const real = (v) => (v && v !== '—' ? v : '');
+    const carrier = real(h.partner) || [real(h.driver), real(h.truck)].filter(Boolean).join(' ');
+    const refs = [];
+    for (const l of ls) if (l.t === 'stop' && real(l.refs)) refs.push(...l.refs.split(' · '));
+    return pdfFileTitle(carrier, refs.length ? refs : [(meta && meta.week) || ''], 'Φύλλο οδηγού');
+  }
   let _last = null;   // the last sheet built: whatsapp() answers from it, never from a second read
   function _tokens() {
     try {
@@ -365,7 +378,7 @@
         return false;
       }
       _last = { rtId, part: p, segmentId, lines: ls, meta: ctx.meta };   // whatsapp(rtId, part) answers for the last sheet built
-      if (typeof _printWeekShell === 'function') _printWeekShell(`Φύλλο οδηγού · ${ctx.cycle.code || 'RT-' + rtId}`, html(ls, ctx.meta, _tokens()));
+      if (typeof _printWeekShell === 'function') _printWeekShell(fileTitle(ls, ctx.meta, `Φύλλο οδηγού · ${ctx.cycle.code || 'RT-' + rtId}`), html(ls, ctx.meta, _tokens()));
       await _copy(text(ls, ctx.meta));
       return true;
     } catch (e) {
@@ -382,9 +395,10 @@
     try {
       const ctx = await _ctx(rtId, board);
       if (!ctx) return null;
-      const body = html(lines(ctx.cycle, ctx.places, p), ctx.meta, _tokens());
+      const ls = lines(ctx.cycle, ctx.places, p);
+      const body = html(ls, ctx.meta, _tokens());
       return { title: `Φύλλο οδηγού · ${ctx.cycle.code || 'RT-' + rtId}`,
-        html: `<!doctype html><html lang="el"><head><meta charset="utf-8"><title>${_esc(ctx.cycle.code || 'RT-' + rtId)}</title></head><body>${body}</body></html>` };
+        html: `<!doctype html><html lang="el"><head><meta charset="utf-8"><title>${_esc(fileTitle(ls, ctx.meta, ctx.cycle.code || 'RT-' + rtId))}</title></head><body>${body}</body></html>` };
     } catch (e) {
       _log(e, 'WN5Sheet sheetDoc');
       if (typeof toast === 'function') toast('Το φύλλο οδηγού δεν βγήκε: ' + String(e && e.message || e), 'danger');
@@ -397,5 +411,5 @@
     return text(_last.lines, _last.meta);
   }
 
-  window.WN5Sheet = Object.freeze({ print, sheetDoc, whatsapp, lines, text, html });
+  window.WN5Sheet = Object.freeze({ print, sheetDoc, whatsapp, lines, text, html, fileTitle });
 })();
