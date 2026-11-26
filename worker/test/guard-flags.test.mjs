@@ -23,7 +23,7 @@ test('guard-flags.txt names every flag of the guard, in the guard\'s order', () 
   // that feature unchecked: the drift that left the CLAUDE.md command two markers behind
   const usage = readFileSync(path.join(here, '..', 'tools', 'worker-guard.mjs'), 'utf8').match(/^\/\/ Usage: .*$/m)[0];
   const guardFlags = usage.match(/--[a-z0-9]+/g);
-  const line = readFileSync(path.join(here, '..', 'guard-flags.txt'), 'utf8').split('\n').find((l) => l.trim() && !l.startsWith('#'));
+  const line = readFileSync(path.join(here, '..', 'guard-flags.txt'), 'utf8').split('\n').find((l) => l.trim() && !l.trim().startsWith('#'));
   const fileFlags = line.match(/--[a-z0-9]+/g);
   assert.ok(guardFlags.length >= 2, 'no flags read from the guard usage line');
   assert.deepEqual(fileFlags, guardFlags);

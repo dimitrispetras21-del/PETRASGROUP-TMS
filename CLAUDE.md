@@ -185,8 +185,8 @@ cd worker && CLOUDFLARE_API_TOKEN=$CF_API_TOKEN npx wrangler deploy
      3771f035): `"Load Seq": "load_seq"`, ακριβώς μία φορά **και** μέσα στο ORDER STOPS (`--seq 1`). **Σήμερα** οι
      σημαίες είναι η μία γραμμή του `worker/guard-flags.txt` (με το `--chg 1` του #346: `GUARD OK (49 markers, …, seq=1,
      chg=1)`)· όποιο PR προσθέτει σημαία τη γράφει και εκεί, και το CI ελέγχει ότι το αρχείο έχει όλες τις σημαίες του
-     φρουρού και ότι το `main` περνά με αυτές. Με το χέρι (π.χ. στη λήψη CF μετά το deploy):
-     `node worker/tools/worker-guard.mjs <bundle ή λήψη CF> $(grep -v '^#' worker/guard-flags.txt)`. Επείγουσα επαναφορά: **πρώτα** η φόρμα κλείνει (`FEATURES.INTL_GROUP_FORM = false`, με
+     φρουρού και ότι το `main` περνά με αυτές. Με το χέρι, από το root του repo (π.χ. στη λήψη CF μετά το deploy):
+     `node worker/tools/worker-guard.mjs <bundle ή λήψη CF> $(grep -v '^[[:space:]]*#' worker/guard-flags.txt)`. Επείγουσα επαναφορά: **πρώτα** η φόρμα κλείνει (`FEATURES.INTL_GROUP_FORM = false`, με
      bump ?v= / SW_VERSION), γιατί με τον παλιό Worker το «Load Seq» πετιέται με 200 (η φόρμα το διαβάζει πίσω και λέει ότι η
      σειρά δεν κρατήθηκε, αλλά κάθε groupage θα έμενε χωρίς σειρά)· **μετά** `wrangler rollback 3423cec5-b7c6-460d-bcc6-67d4f7b8f166` (ο Worker του κύματος 2 των μηνυμάτων) → φρουρός με `--seq 0` →
      `GUARD OK (47 markers, … seq=0)`. Η 113 στη βάση μένει (ο 3423cec5 δεν τη διαβάζει)· το `113_stop_load_seq_rollback.sql`
