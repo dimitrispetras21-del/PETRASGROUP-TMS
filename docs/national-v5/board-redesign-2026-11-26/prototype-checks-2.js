@@ -16,7 +16,7 @@ const ok = (c, m) => console.log((c ? 'PASS ' : 'FAIL ') + m);
   await open(); await p.locator('.pz-day.today .pz-row', { hasText: 'HMA 4106' }).locator('.pz-side.a').click(); await p.keyboard.type('40 Άργος 6814'); await p.waitForTimeout(150);
   ok(/έχει μόνο 33/.test(await p.locator('.pz-pop').innerText()), '40 of a 33-pallet load says «έχει μόνο 33»');
   await p.keyboard.press('Enter'); await p.waitForTimeout(150); s = await st();
-  ok(!s.rows.some((r) => r.trk && r.a.some((x) => x.ref === '6814')), 'and Enter does not accept it'); await p.keyboard.press('Escape'); await p.keyboard.press('Escape');
+  ok(s.rows.some((r) => r.trk && r.a.some((x) => x.ref === '6814' && x.q === 33 && x.asked === 40)), 'Enter takes the 33 there are and the line keeps «έγραψες 40»'); await p.keyboard.press('Backspace'); await p.keyboard.press('Escape'); await p.keyboard.press('Escape');
   // wrong word with a right reference
   await p.locator('.pz-day.today .pz-row', { hasText: 'HMA 4106' }).locator('.pz-side.a').click(); await p.keyboard.type('22 Αργκος 6814'); await p.waitForTimeout(150);
   ok(/-6814 είναι Άργος/.test(await p.locator('.pz-pop').innerText()), 'a wrong place with a right reference gets the right reason'); await p.keyboard.press('Escape'); await p.keyboard.press('Escape');

@@ -15,11 +15,11 @@ const ok = (c, m) => console.log((c ? 'PASS ' : 'FAIL ') + m);
   ok(s.rows.some((r) => !r.trk && r.a.some((x) => x.ref === '6814' && x.q === 11)), 'the other 11 stay as a line without a truck');
   await p.screenshot({ path: out + '/proto-added.png' });
   // 2 a reference that does not exist is said, never substituted
-  await p.keyboard.type('5 Άργος 1234'); await p.waitForTimeout(150); ok(/δεν βρέθηκε/.test(await p.locator('.pz-pop').innerText()), 'unknown reference says «δεν βρέθηκε»');
+  await p.keyboard.type('5 Άργος 1234'); await p.waitForTimeout(150); ok(/δεν περιμένει/.test(await p.locator('.pz-pop').innerText()), 'four digits that match no load are asked about, never guessed');
   // 3 typed text survives a click elsewhere
   await p.locator('.pz-hd h3').click(); await p.waitForTimeout(150); ok(await p.locator('.pz-draft').count() === 1, 'unfinished text stays in the line, marked');
   // 4 backspace returns the piece to a line without a truck; key repeat does not eat the line
-  await line('HMA 4106').locator('.pz-side.a').click(); await p.keyboard.press('Escape'); await p.keyboard.press('Backspace'); await p.waitForTimeout(150);
+  await line('HMA 4106').locator('.pz-side.a').click(); await p.keyboard.press('ControlOrMeta+A'); await p.keyboard.press('Backspace'); await p.keyboard.press('Backspace'); await p.waitForTimeout(150);
   s = await st(); ok(total(s) === T0, 'pallets conserved after Backspace (' + total(s) + ')');
   ok(s.rows.some((r) => !r.trk && r.a.some((x) => x.ref === '6814' && x.q === 33)), 'the 22 went back to their line: 33 again');
   await p.keyboard.press('Escape');
