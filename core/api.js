@@ -46,7 +46,8 @@ function _lsGet(key, tableId) {
     const { data, ts } = JSON.parse(raw);
     const ttl = _isLong(tableId) ? LONG_MS : STABLE_MS;
     if (Date.now() - ts > ttl) { localStorage.removeItem('at_' + _userPrefix() + '_' + key); return null; }
-    return data;
+    // with its write time: a copy promoted to memory keeps the age of its data (cacheDropForReturn, T188)
+    return { data, ts };
   } catch(e) { if (typeof logError === 'function') logError(e, '_lsGet cache read'); return null; }
 }
 
@@ -60,7 +61,7 @@ function _memGet(key, ttl) {
   return null;
 }
 
-function _memSet(key, data) { _MEM[key] = { data, ts: Date.now() }; }
+function _memSet(key, data, ts = Date.now()) { _MEM[key] = { data, ts }; }
 
 // ── Request Queue (max 4 concurrent, Airtable limit = 5) ──
 // max 2 per browser when proxy active (server manages global limit), 4 in direct mode
@@ -739,7 +740,7 @@ async function atGet(tableId, filter = '', useCache = true) {
     const memTtl = _isLong(tableId) ? LONG_MS : (stable ? STABLE_MS : SESSION_MS);
     const mem = _memGet(key, memTtl);
     if (mem) return mem;
-    if (stable) { const ls = _lsGet(key, tableId); if (ls) { _memSet(key, ls); return ls; } }
+    if (stable) { const ls = _lsGet(key, tableId); if (ls) { _memSet(key, ls.data, ls.ts); return ls.data; } }
   }
 
   const records = await _atFetch(tableId, paramStr);
@@ -776,7 +777,7 @@ async function atGetAll(tableId, opts = {}, useCache = true) {
     const memTtl = _isLong(tableId) ? LONG_MS : (stable ? STABLE_MS : SESSION_MS);
     const mem = _memGet(key, memTtl);
     if (mem) return mem;
-    if (stable) { const ls = _lsGet(key, tableId); if (ls) { _memSet(key, ls); return ls; } }
+    if (stable) { const ls = _lsGet(key, tableId); if (ls) { _memSet(key, ls.data, ls.ts); return ls.data; } }
   }
 
   const records = await _atFetch(tableId, paramStr);
@@ -1104,6 +1105,27 @@ function clearApiCaches() {
   if (typeof invalidateRefData === 'function') invalidateRefData();
 }
 
+// Before core/fresh-on-return.js draws a page again on a return to the tab (T188, code review 26/11): the cached
+// reads that could be older than what the page should show. The 2-min tier (orders and everything else) goes
+// whole, so the page reads the database and «Ενημερώθηκε» is true. Of the six reference tables (30 min, 4 h) only
+// copies older than the last fresh reference read go: that read is at most 10 min old, and the copies it wrote stay,
+// so F5 still paints from localStorage. The lists in REF_DATA are not touched (names and pickers never go blank).
+let _refFreshAt = 0;   // when the last successful fresh read of the six reference tables started
+function cacheDropForReturn() {
+  const stableIds = [..._LONG_TABLES, ..._STABLE_TABLES];
+  const stableOf = k => stableIds.some(id => k.startsWith(id));
+  Object.keys(_MEM).forEach(k => { if (!stableOf(k) || _MEM[k].ts < _refFreshAt) delete _MEM[k]; });
+  try {
+    const pre = 'at_' + _userPrefix() + '_';
+    Object.keys(localStorage).forEach(k => {
+      if (!k.startsWith(pre)) return;
+      // _lsSet writes {data, ts} with ts last: read it from the tail, not by parsing a whole table on each return
+      const m = /"ts":(\d+)\}$/.exec(localStorage.getItem(k) || '');
+      if (!m || Number(m[1]) < _refFreshAt) localStorage.removeItem(k);   // unreadable counts as old
+    });
+  } catch(e) { if (typeof logError === 'function') logError(e, 'cacheDropForReturn localStorage'); }
+}
+
 function atClearCache(tableId) { invalidateCache(tableId); }
 
 // Helper: extract first value from linked record / array field
@@ -1234,23 +1256,45 @@ let _refRevalidated = false;
 function _refDataRevalidate() {
   if (_refRevalidated) return;
   _refRevalidated = true;
-  const T = typeof TABLES !== 'undefined' ? TABLES : {};
   setTimeout(() => {
-    Promise.all([
-      atGetAll(T.TRUCKS,    { fields: _REF_FIELDS.trucks },    false),
-      atGetAll(T.DRIVERS,   { fields: _REF_FIELDS.drivers },   false),
-      atGetAll(T.TRAILERS,  { fields: _REF_FIELDS.trailers },  false),
-      atGetAll(T.LOCATIONS, { fields: _REF_FIELDS.locations }, false),
-      atGetAll(T.CLIENTS,   { fields: _REF_FIELDS.clients },   false),
-      atGetAll(T.PARTNERS,  { fields: _REF_FIELDS.partners },  false),
-    ]).then(([trucks, drivers, trailers, locations, clients, partners]) => {
-      REF_DATA.trucks = trucks; REF_DATA.drivers = drivers; REF_DATA.trailers = trailers;
-      REF_DATA.locations = locations; REF_DATA.clients = clients; REF_DATA.partners = partners;
-      // Τα search widgets τοποθεσιών κρατούν δικά τους arrays — φρεσκάρισμα
-      // επί τόπου (τα dropdowns διαβάζουν στο άνοιγμα, όχι snapshot).
-      if (typeof _fhRefreshLocations === 'function') _fhRefreshLocations(locations);
-    }).catch(e => console.warn('[refdata] revalidate:', e.message));
+    _refDataFetchFresh().catch(e => console.warn('[refdata] revalidate:', e.message));
   }, 1500);
+}
+
+// The six lists read past every cache, then swapped in whole: a reader never sees them empty or half new.
+function _refDataFetchFresh() {
+  const T = typeof TABLES !== 'undefined' ? TABLES : {};
+  const startedAt = Date.now();
+  return Promise.all([
+    atGetAll(T.TRUCKS,    { fields: _REF_FIELDS.trucks },    false),
+    atGetAll(T.DRIVERS,   { fields: _REF_FIELDS.drivers },   false),
+    atGetAll(T.TRAILERS,  { fields: _REF_FIELDS.trailers },  false),
+    atGetAll(T.LOCATIONS, { fields: _REF_FIELDS.locations }, false),
+    atGetAll(T.CLIENTS,   { fields: _REF_FIELDS.clients },   false),
+    atGetAll(T.PARTNERS,  { fields: _REF_FIELDS.partners },  false),
+  ]).then(([trucks, drivers, trailers, locations, clients, partners]) => {
+    REF_DATA.trucks = trucks; REF_DATA.drivers = drivers; REF_DATA.trailers = trailers;
+    REF_DATA.locations = locations; REF_DATA.clients = clients; REF_DATA.partners = partners;
+    // Τα search widgets τοποθεσιών κρατούν δικά τους arrays — φρεσκάρισμα
+    // επί τόπου (τα dropdowns διαβάζουν στο άνοιγμα, όχι snapshot).
+    if (typeof _fhRefreshLocations === 'function') _fhRefreshLocations(locations);
+    // The client names the lists and boards print (fhClientName) are kept in a map that only ever ADDED names, so a
+    // renamed client kept its old name until the tab was closed, F5 included (measured 26/11, tests stale-measure).
+    if (typeof _fhRefreshClients === 'function') _fhRefreshClients(clients);
+    _refFreshAt = startedAt;   // cached copies older than this read are out of date (cacheDropForReturn)
+    return REF_DATA;
+  });
+}
+
+// On a return to the tab (core/fresh-on-return.js, at most every 10 min) and on its ↻: the reference lists as they
+// are NOW. Before this a new or renamed client, partner or truck reached another user only after 30 min (clients,
+// partners) or 4 h (places, trucks, trailers, drivers), and F5 did not help: both tiers live in localStorage (T188,
+// 26/11). The lists in memory stay until the fresh ones arrive; a failed read leaves them as they were.
+// Always the fresh read: after a save to a reference table invalidateRefData sets _loaded false, and the preload
+// alone reads through the cache (up to 30 min / 4 h), which would end the fresh reads for the tab (review 26/11).
+async function refDataRefresh() {
+  if (!REF_DATA._loaded) await preloadReferenceData();
+  return _refDataFetchFresh();
 }
 
 // Convenience accessors — return cached arrays or empty arrays if not yet loaded

@@ -291,6 +291,8 @@ function navigate(page) {
   }
   currentPage = page;
   localStorage.setItem('tms_page', page);
+  // the page's age for the top bar and for the re-read on a return to the tab (core/fresh-on-return.js, T188)
+  if (typeof tmsFreshDrawn === 'function') tmsFreshDrawn();
   // The hash mirrors the page (Παντελής 15/9) so F5 and a link opened in a
   // new tab land on the same screen. replaceState, not location.hash: no
   // hashchange round-trip and no history entry per click — Back keeps

@@ -91,3 +91,18 @@ jobs:
           tests/wi4-vs-state.test.mjs tests/stops-helpers-identity.test.mjs tests/f5-legacy-writes-gated.test.mjs tests/api-delete-confirm.test.mjs
           tests/orders-natl-v5.test.js tests/daily-ramp-v5.test.js tests/f5-d3-entities-v5.test.mjs tests/f5-natv5-kpi.test.js
           tests/sql-074a-drafts.test.js tests/wn5-labels.test.js
+
+  fresh-on-return:
+    name: A return to the tab reads fresh data, never over a form
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # T188 (ValueDriven 26/11): core/fresh-on-return.js draws the page again when the user comes back to the tab.
+      # The pins: never on window focus (it swallowed the click), never over a form, a typed search or offline,
+      # the reference lists at most every 10 min. Node only, no npm install.
+      - name: Run the fresh-on-return tests
+        run: node --test tests/fresh-on-return.test.mjs tests/api-cache-drop-return.test.mjs

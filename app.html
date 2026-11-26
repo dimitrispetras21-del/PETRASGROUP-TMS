@@ -114,7 +114,7 @@
 <script src="core/dkv-parser.js?v=1794030000"></script>
 <script src="core/constants.js?v=1793820000"></script>
 <script src="core/auth.js?v=1791464457"></script>
-<script src="core/api.js?v=1795660000"></script>
+<script src="core/api.js?v=1795700000"></script>
 <!-- 2a. National v5 (F4α): the one client of /plan/* — inert at load, used only by the v5 board (FEATURES.WN_V5). -->
 <script src="core/plan-api.js?v=1794540000"></script>
 <!-- 2b. National v5 F5 (FE-1): PlanConfig.load() = has day L happened (GET /plan/config); inert at load. -->
@@ -122,6 +122,8 @@
 <!-- F36: the login window over the page (core/api.js opens it on a 401) and the new-version reload that waits for open forms. -->
 <script src="core/relogin.js?v=1793482508"></script>
 <script src="core/sw-update.js?v=1793482508"></script>
+<!-- T188: the page read again when the user comes back to the tab, never over an open form; inert at load. -->
+<script src="core/fresh-on-return.js?v=1795700000"></script>
 <script src="core/countries.js?v=1788767479"></script>
 <script src="core/utils.js?v=1793482508"></script>
 <!-- The printed week (owner 10/11): pure, plain rows in and HTML out; the board modules feed it. -->
@@ -132,7 +134,7 @@
 <script src="core/entity.js?v=1795670000"></script>
 <script src="core/data-helpers.js?v=1791230000"></script>
 <script src="core/plain-ref.js?v=1794460000"></script>
-<script src="core/form-helpers.js?v=1794310000"></script>
+<script src="core/form-helpers.js?v=1795700000"></script>
 <script src="core/scan-helpers.js?v=1790625635"></script>
 <script src="core/doc-text.js?v=1790625635"></script>
 <script src="core/scan-engine-v2.js?v=1790625635"></script>
@@ -143,7 +145,7 @@
 <script src="core/load-plan.js?v=1794770000"></script>
 <script src="core/vs-dates.js?v=1791757438"></script>
 <script src="core/pa-helpers.js?v=1791147854"></script>
-<script src="core/router.js?v=1792003704"></script>
+<script src="core/router.js?v=1795700000"></script>
 <script src="core/icons.js?v=1791745808"></script>
 <script src="core/command-palette.js?v=1791745808"></script>
 <script src="core/metrics.js?v=1792620991"></script>
@@ -273,6 +275,9 @@ function init() {
   atPresenceStart(); // Multi-user presence tracking
 }
 init();
+
+// T188 (26/11): a return to the tab draws the page again when it is over 60 s old (core/fresh-on-return.js).
+if (typeof tmsFreshWatch === 'function') tmsFreshWatch();
 
 // Register Service Worker for offline mode + auto-update
 if ('serviceWorker' in navigator) {

@@ -62,6 +62,16 @@ function _fhRefreshLocations(locRecords) {
   });
 }
 
+// A renamed client's new name over the old one (core/api.js _refDataFetchFresh). Only names already in the map are
+// replaced: the map holds the clients a page has printed, and adding all 1,900 would change nothing on screen.
+function _fhRefreshClients(clientRecords) {
+  if (!Array.isArray(clientRecords) || !clientRecords.length) return;
+  clientRecords.forEach(r => {
+    const name = r && r.fields && r.fields['Company Name'];
+    if (name && Object.prototype.hasOwnProperty.call(_fhClientsMap, r.id)) _fhClientsMap[r.id] = name;
+  });
+}
+
 // F52 (live 31/10): a place saved in «Τοποθεσίες» was not in the order forms' pickers until a reload — the list
 // above is read once per page (fhLoadLocations returns while it holds anything) and the background re-read runs
 // once per load. The saved record goes into THE list (no copy of it), with the label fhLoadLocations gives it, in
