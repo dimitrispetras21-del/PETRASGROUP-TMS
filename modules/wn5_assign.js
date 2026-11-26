@@ -38,6 +38,9 @@
   // PlanIds.list maps and sorts the whole catalogue on each call: read once per form (build() empties it), never per
   // option or keystroke (code review high)
   let _lists = {};
+  // names (normalised) of drivers created from this form in this session whose catalogue re-read did not show them yet:
+  // the create row is not offered again for them, so a retry never writes a second identical driver (code review xhigh)
+  const _created = new Set();
   const _list = (kind) => (_lists[kind] || (_lists[kind] = typeof PlanIds === 'undefined' ? [] : PlanIds.list(kind)));
 
   // ═══ the state of one form, snapshotted at open (rule 4 of wn5_actions.js: two presses send the same bytes) ═══
@@ -678,12 +681,32 @@
     const rank = (lbl) => (norm(lbl).startsWith(nq) ? 0 : String(lbl || '').split(/[\s,.\-·/]+/).some((w) => w && norm(w).startsWith(nq)) ? 1 : 2);
     return items.map((x, i) => [rank(x.label), i, x]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map((r) => r[2]);
   }
-  function _listHTML(opts, px, hi) {
+  // owner 25/11 (usability test): a driver not yet in the catalogue blocked the assignment, or the truck went out
+  // «χωρίς οδηγό». The driver list offers to create it, by the name typed, when no driver of the catalogue (active or
+  // not: an inactive one is re-activated on the Drivers page, never duplicated here) carries that name. The type is
+  // required on the Drivers page too (it decides the pay), so the row asks it: two buttons, no default guessed.
+  // Code review xhigh: a one-word query while drivers still match is a search, not a name («Pap» → Papadopoulos), so
+  // the row waits for a second word or for an empty list; an inactive driver of that name is said, never hidden
+  // (the dispatcher cannot re-activate: no PATCH).
+  function _newDriverHTML(px, q, nOpts) {
+    if (px !== 'dr' || typeof createDriverQuick !== 'function' || typeof canCreateEntity !== 'function' || !canCreateEntity('drivers')) return '';
+    const name = String(q || '').trim().replace(/\s+/g, ' ');
+    if (name.length < 2) return '';
+    const k = K(), nq = k.norm(name);
+    const same = _list('driver').find((x) => k.norm(x.label) === nq);
+    if (same) return same.active ? '' : '<div class="wn5a-none">Ο οδηγός «' + _e(same.label) + '» είναι ανενεργός — ζήτα να ενεργοποιηθεί στους Οδηγούς</div>';
+    if (_created.has(nq)) return '<div class="wn5a-none">Ο οδηγός «' + _e(name) + '» γράφτηκε — ανανέωσε τη σελίδα για να τον διαλέξεις</div>';
+    if (nOpts && !name.includes(' ')) return '';
+    return '<div class="wn5a-new"><span>+ Νέος οδηγός «' + _e(name) + '»</span>'
+      + '<button type="button" data-newdr="Internal">Εσωτερικός</button><button type="button" data-newdr="External">Εξωτερικός</button></div>';
+  }
+  function _listHTML(opts, px, hi, q) {
+    const add = _newDriverHTML(px, q, opts.length);
     return opts.map((o, i) => '<div class="wn5a-o' + (i === hi ? ' hi' : '') + (o.cls === 'busy' ? ' wi-sdo--busy' : '') + '" data-pick="' + o.id + '" data-px="' + px + '">'
       + '<span class="' + (FIELDS[px].mono ? 'wn5a-mono' : '') + '">' + _e(o.label) + '</span>'
       + (o.sub ? '<div class="wi-sdo-sub wn5a-osub ' + o.cls + '">' + _e(o.sub) + '</div>' : '')
       + (o.warn.length ? '<div class="wi-sdo-sub wi-sdo-warn">' + _e(o.warn.join(' · ')) + '</div>' : '') + '</div>').join('')
-      + (opts.length ? '' : '<div class="wn5a-none">—</div>');
+      + (opts.length || add ? '' : '<div class="wn5a-none">—</div>') + add;
   }
 
   // ═══ one open form ═══
@@ -800,7 +823,11 @@
       if (b && !b.disabled) b.focus();
     };
     // a pick from the list (or an exact name typed); own and partner exclude each other, as one executes
+    // a driver or partner picked while a driver create waits wins over the create's own pick (code review xhigh);
+    // a truck or trailer pick does not touch the driver, so it does not count
+    let picks = 0;
     const choose = (px, id, next) => {
+      if (px === 'dr' || px === 'pt') picks++;
       const f = FIELDS[px];
       st[f.key] = id;
       st.typed[px] = '';
@@ -824,17 +851,21 @@
         el.className = 'wn5a-list';
         el.setAttribute('role', 'listbox');
         document.body.appendChild(el);
-        list = { px, el, opts: [], hi: 0 };
+        list = { px, el, opts: [], hi: 0, q: '' };
         el.addEventListener('mousedown', (ev) => {
           const o = ev.target.closest('[data-pick]');
+          const nd = ev.target.closest('[data-newdr]');
           ev.preventDefault();
+          if (nd) { _createDriver(list.q, nd.dataset.newdr); return; }
           if (o) choose(px, Number(o.dataset.pick), null);
         });
       }
       const q = st[FIELDS[px].key] != null && inp.value === _label(px, st[FIELDS[px].key]) ? '' : inp.value;
+      list.q = q;
       list.opts = _options(st, px, q);
       list.hi = Math.min(list.hi, Math.max(0, list.opts.length - 1));
-      list.el.innerHTML = _listHTML(list.opts, px, list.hi);
+      // a create in flight keeps its waiting line: no second create row under the user's typing (code review xhigh)
+      list.el.innerHTML = creating && px === 'dr' ? _waitHTML(creating) : _listHTML(list.opts, px, list.hi, q);
       const r = inp.getBoundingClientRect();
       list.el.style.display = 'block';
       list.el.style.left = r.left + 'px';
@@ -844,6 +875,47 @@
       const lh = list.el.offsetHeight;
       if (r.bottom + 2 + lh > window.innerHeight - 8 && r.top - 2 - lh > 8) list.el.style.top = (r.top - 2 - lh) + 'px';
     };
+    // the driver is written by core/entity.js (createDriverQuick: DRIVERS POST, Full Name + Type, and PlanIds.stale),
+    // then the catalogue is read again and the new row is found by the legacy id the POST answered — never by its
+    // name. A refusal (403 before the Worker allows it) is already said by _atRetry; the strip says what did not
+    // happen, so no assignment goes on as if the driver existed.
+    let creating = '';   // the name being created, '' when none
+    const _waitHTML = (name) => '<div class="wn5a-none">Δημιουργία οδηγού «' + _e(name) + '»…</div>';
+    async function _createDriver(q, type) {
+      const name = String(q || '').trim().replace(/\s+/g, ' ');
+      if (creating || name.length < 2 || !_live()) return;
+      creating = name;
+      if (list) list.el.innerHTML = _waitHTML(name);
+      const seq = picks;
+      // the form closed during the wait: the board's host says it, never a detached dialog
+      const say = (code, text) => WN5Act.strip(d.dlg.isConnected ? d.msg : K().boardHost(), K().clientErr(code, text));
+      try {
+        let rec;
+        try {
+          rec = await createDriverQuick(name, type);
+        } catch (e) {
+          _dropList();
+          if (e && e._sessionGone) return;   // the session flow (core/api.js) already took the page
+          say('driver_create', 'Ο οδηγός «' + name + '» δεν προστέθηκε: ' + (e && e.message ? e.message : 'άγνωστο σφάλμα'));
+          return;
+        }
+        // written from here on: a failure below is never «δεν προστέθηκε». A failed catalogue re-read is kept for a
+        // minute (PlanIds _staleAfter), so the words ask for a page refresh, not a reopened form.
+        _created.add(K().norm(name));
+        const ids = await PlanIds.load();
+        _lists = {};
+        const hit = _list('driver').find((x) => x.legacy_id === rec.id);
+        if (!hit) {
+          _dropList();
+          say('driver_listed', 'Ο οδηγός «' + name + '» γράφτηκε, αλλά ' + (ids && ids.err ? 'οι κατάλογοι δεν ξαναδιαβάστηκαν' : 'δεν φάνηκε ακόμη στη λίστα') + ' — ανανέωσε τη σελίδα για να τον διαλέξεις');
+          return;
+        }
+        _created.delete(K().norm(name));
+        if (d.dlg.isConnected && picks === seq) choose('dr', hit.id, null);
+      } finally {
+        creating = '';
+      }
+    }
     d.dlg.addEventListener('focusin', (ev) => { const t = ev.target; if (!quiet && t.matches && t.matches('[data-in]')) openList(t); });
     // a field focused quietly (_focusNext) opens its list on a click too
     d.dlg.addEventListener('mousedown', (ev) => { const t = ev.target; if (t.matches && t.matches('[data-in]') && document.activeElement === t && (!list || list.px !== t.dataset.in)) openList(t); });
@@ -897,9 +969,10 @@
       if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
         ev.preventDefault();
         list.hi = Math.max(0, Math.min(list.opts.length - 1, list.hi + (ev.key === 'ArrowDown' ? 1 : -1)));
-        list.el.innerHTML = _listHTML(list.opts, list.px, list.hi);
+        list.el.innerHTML = creating && list.px === 'dr' ? _waitHTML(creating) : _listHTML(list.opts, list.px, list.hi, list.q);
       } else if (ev.key === 'Enter') {
         ev.preventDefault();
+        if (creating && list.px === 'dr') return;   // the list shows only «Δημιουργία…»: nothing to pick
         const o = list.opts[list.hi];
         if (o) choose(list.px, o.id, null);
       }
