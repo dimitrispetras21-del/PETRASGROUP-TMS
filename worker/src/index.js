@@ -691,8 +691,14 @@ var PERMISSIONS = {
     partners: ["GET", "POST", "PATCH", "DELETE"],
     locations: ["GET", "POST", "PATCH", "DELETE"],
     scan_examples: ["GET", "POST"],
-    // drivers:'view' -> read-only: drivers, trucks, trailers, workshops.
-    drivers: ["GET"],
+    // trucks / trailers / workshops: read-only (front end: their pages are
+    // gated by maintenance:'view', core/entity.js — not by drivers:'view').
+    // drivers: CREATE only (owner 25/11, usability test): a new driver blocked
+    // the assignment, or the truck was saved «χωρίς οδηγό». POST alone: no
+    // PATCH (edit / deactivate) and no DELETE, those stay with owner /
+    // management / accountant. This key is the `drivers` table only (trap 3:
+    // roleMap[table]) — trucks / trailers / workshops keep their own GET rows.
+    drivers: ["GET", "POST"],
     trucks: ["GET"],
     trailers: ["GET"],
     workshops: ["GET"],

@@ -1496,7 +1496,14 @@
       if (!it) { WN5Act.strip(_boardHost(), _clientErr('piece_missing', 'Η παράδοση δεν είναι πια στο board — ανανέωσε')); return; }
       const group = it.order_id != null ? { order_id: it.order_id } : (it.nat_order_id != null ? { nat_order_id: it.nat_order_id } : null);
       const dayEl = row && row.closest('.wn5-day[data-date]');
-      WN5Act.assign(group ? { group } : { pieces: [{ piece_id: pid }] },
+      // 114: a part of a split load is its own row and goes alone; the order's other rows go without its parts
+      // (plan_put_group would take every waiting piece of the order, the parts too)
+      const parts = group ? _groupItems(group).filter((x) => x.parent_piece_id != null) : [];
+      const src = it.parent_piece_id != null ? { pieces: [{ piece_id: pid }] }
+        // band: the order, for the form's «μόνο αυτό το σημείο» and its heading; the body stays these pieces
+        : parts.length ? { pieces: _groupItems(group).filter((x) => x.parent_piece_id == null).map((x) => ({ piece_id: x.piece_id })), band: group }
+          : group ? { group } : { pieces: [{ piece_id: pid }] };
+      WN5Act.assign(src,
         // focus: the piece pressed, for «μόνο αυτές οι παλέτες» (F42); anchor: kept for the callers, the form itself is a
         // centred window since owner 3/11 (wn5_assign.js _form)
         { day: it.nat_ready_day || (dayEl && dayEl.dataset.date) || null, side: _sideFor(it), entry: card ? 'queue' : 'row', focus: pid, anchor: el });
@@ -1783,8 +1790,18 @@
         const by = items.map((x) => x.deliver_to).filter((x) => x && !isNaN(new Date(x).getTime())).sort((a, b) => new Date(a) - new Date(b))[0];
         gs.push({ head, day, sub: (day ? ' · ' + _dayShort(day) : '') + (by ? ' · στη Βέροια ως ' + _wd(_ymdOf(by)) + ' ' + _hm(by) : '') + _cnt(items) + ' · ' + _palU(_sum(items.map((x) => x.pallets)), _unkN(items.map((x) => x.pallets))) + 'π', items });
       }
+      // owner 25/11: a VS export picked up near Veroia is the local driver's (WN5L.localPlace, the board's one rule):
+      // still offered, marked «τοπική» and after the trucks' own requests. A place without coordinates is not local.
+      const co = typeof WN5L !== 'undefined' && typeof WN5 !== 'undefined' && typeof WN5.coordOf === 'function' ? WN5.coordOf() : null;
+      // the board's hub (PlanIds.hub, as _modelOpts), then the cycles' Veroia stop: one hub for the board and this list
+      const hubL = (typeof PlanIds !== 'undefined' && typeof PlanIds.hub === 'function' && PlanIds.hub()) || st.hub;
+      const locOf = (it) => (it.nat_from_location_id != null ? it.nat_from_location_id : it.position_location_id);
+      for (const g of gs) {
+        g.local = !!co && g.items.every((it) => it.kind === 'vs_export' && WN5L.localPlace(locOf(it), co, hubL) === true);
+        if (g.local) g.chip = 'τοπική';
+      }
       const far = (g) => (g.day && st.day ? Math.abs(_dayDiff(st.day, g.day)) : 1e6);
-      gs.sort((a, b) => far(a) - far(b) || String(a.day || '').localeCompare(String(b.day || '')));
+      gs.sort((a, b) => (a.local ? 1 : 0) - (b.local ? 1 : 0) || far(a) - far(b) || String(a.day || '').localeCompare(String(b.day || '')));
       groups.push(...gs);
     }
     return groups;

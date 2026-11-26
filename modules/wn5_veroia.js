@@ -405,6 +405,14 @@
       + (raw.for_split === true ? '<button type="button" class="wn5-hub-pi" data-v="weekly">← Weekly</button>' : ''),
       (v) => { if (v === 'split') split(id, anchor); else if (v === 'weekly') _hubMark([id], false); });
   }
+  // 114 (owner 8/11, 25/11): «⋯» of a «ΠΡΟΣ ΑΝΑΘΕΣΗ» row of the Weekly whose one load waits at its loading point:
+  // «Σπάσε…» only. The row draws the button only when the base allows the split (WN5L canSplit).
+  function waitMore(pieceId, anchor) {
+    if (!_live()) return;
+    const id = K().id(pieceId);
+    if (!id || !anchor) return;
+    _popOpen(anchor, '<button type="button" class="wn5-hub-pi" data-v="split">Σπάσε…</button>', (v) => { if (v === 'split') split(id, anchor, { start: true }); });
+  }
   // ═══ P-11 (087, owner 28/10, answer 1 of the Veroia panel, PR #167): a piece is in ONE place ═══
   // A VS import starts only as a ΠΡΟΣ ΑΝΑΘΕΣΗ row; its ✈ sends it to this panel (hub: true) and it leaves the Weekly;
   // «← Weekly» brings it back (hub: false). One mark in the base, shipment_pieces.for_split_at (the board's
@@ -505,6 +513,8 @@
   function _splitBody(st) {
     return { piece_id: st.pieceId, parts: st.parts.map((p) => {
       const o = { pallets: _valid(p.pal) };
+      // 114: a part split at its loading point waits as the load did; the base takes pallets only there
+      if (st.start) return o;
       // Π2: a part whose truck is on another trip those days — said on its line when it was chosen — carries accept_busy
       if (p.rt) { o.target = { rt_id: p.rt, side: 'KATHODOS' }; o.stops = p.stops; if (p.busy && p.busy.accept) o.target.accept_busy = true; }
       // B-26 (088): a part that stays leaves by the day shown, ALWAYS sent: the shown day is the written day, and the
@@ -523,12 +533,20 @@
     }
     return Math.round(sum * 10) === Math.round(st.total * 10);   // parts_sum (072:900), checked before the button lights
   }
-  function split(pieceId, anchor) {
+  // opts.start (114): the load waits at its own loading point (a «ΠΡΟΣ ΑΝΑΘΕΣΗ» row of the Weekly): parts and their
+  // sum only, no truck and no «φεύγει ως» — each part stays «ΠΡΟΣ ΑΝΑΘΕΣΗ» and is assigned on its own afterwards
+  function split(pieceId, anchor, opts) {
     if (!_live()) return null;
     const k = K();
+    const start = !!(opts && opts.start);
     const pid = k.id(pieceId);
     const it = pid ? k.item(pid) : null;
-    if (!it || !it.at_hub) { WN5Act.strip(k.boardHost(), k.clientErr('piece_missing', 'Η παράδοση δεν είναι πια στη Βέροια — ανανέωσε')); return null; }
+    // start: at its loading point only (WN5L canSplit's rule), never a load waiting at a transfer stop
+    const atStart = (x) => !x.at_hub && x.is_stock !== true && x.position_location_id != null && Number(x.position_location_id) === Number(x.nat_from_location_id);
+    if (start ? (!it || !atStart(it)) : (!it || !it.at_hub)) {
+      WN5Act.strip(k.boardHost(), k.clientErr('piece_missing', start ? 'Το φορτίο δεν περιμένει πια στη φόρτωσή του — ανανέωσε' : 'Η παράδοση δεν είναι πια στη Βέροια — ανανέωσε'));
+      return null;
+    }
     // F1 (080): a piece whose pallets are not known yet does not split (the base refuses it: parts_sum … pallets
     // unknown) — said here, before a dialog whose sum could never close
     if (it.pallets == null) { WN5Act.strip(k.boardHost(), k.clientErr('pallets_unknown', 'Οι παλέτες του φορτίου δεν είναι γνωστές — γράψε τες πρώτα στην παραγγελία (Καρτέλα → Επεξεργασία), μετά σπάσε')); return null; }
@@ -536,21 +554,24 @@
     // that is the earliest of every row, and offered trucks that had loaded days before (usability test 2/11 §3.1).
     // Clamped to the loaded week, the only days whose cycles the board has.
     const m = (WN5.state() || {}).model;
-    let day = _pieceDay(it, m) || it.nat_ready_day;
+    let day = start ? null : (_pieceDay(it, m) || it.nat_ready_day);
     if (m && m.week && day) { const last = k.addDays(m.week, 6); if (day < m.week) day = m.week; else if (day > last) day = last; }
     const hubId = k.hubId();
     // the snapshot (rule 4): the piece, its needs, the day's Veroia cycles with their delivery stops; the label says
     // the day beside the hours, so «14:00–23:59» never reads as today
-    const st = { pieceId: pid, total: it.pallets, item: k.copy(it), needs: k.needs(it, false, hubId), day,
-      trucks: _trucks(day).map((t) => ({ rtId: t.rtId, cyc: k.copy(t.c), label: k.cycText(t.c, t.r).l1.split(' · ')[0] + ' · Βέροια ' + k.dayShort(day) + (t.win ? ' ' + t.win : ''), pal: t.pal, unk: t.unk || 0,
+    // a load in a draft of «Σύνθεση φορτίων» (its row's «σε πρόχειρο» mark): said, never refused (the draft shows it split)
+    const inDraft = !!(start && anchor && anchor.closest && anchor.closest('.wn5-asg') && anchor.closest('.wn5-asg').querySelector('.wn5-indraft:not([hidden])'));
+    const st = { pieceId: pid, total: it.pallets, item: k.copy(it), needs: k.needs(it, false, hubId), day, start, inDraft,
+      trucks: start ? [] : _trucks(day).map((t) => ({ rtId: t.rtId, cyc: k.copy(t.c), label: k.cycText(t.c, t.r).l1.split(' · ')[0] + ' · Βέροια ' + k.dayShort(day) + (t.win ? ' ' + t.win : ''), pal: t.pal, unk: t.unk || 0,
         sideStops: k.copy((t.c.stops || []).filter((s) => s.side === 'KATHODOS' && s.location_id !== hubId)) })),
       parts: [{ t: '', rt: null, pal: '', stops: null }, { t: 'stay', rt: null, pal: '', stops: null }],
       slot: PlanApi.slot() };
     // B-26 (Figma 2011:8744): the day a part that stays leaves by, shown and changeable before the save, prefilled
     // with the base's own: the evening before the national day (decision 18). Never the piece's leave_by: stock has
     // no «⋯» (it is not split here), and a piece sent back to Veroia after riding still holds its old stock day.
-    st.defDay = it.nat_due_day ? k.addDays(it.nat_due_day, -1) : null;
+    st.defDay = !start && it.nat_due_day ? k.addDays(it.nat_due_day, -1) : null;
     st.parts[1].day = st.defDay;
+    if (start) for (const p of st.parts) p.t = 'stay';
     // a popover over the panel, under its «Σπάσε…» (Figma 2011:8744: drawn floating over the board), no «×»
     // Figma 2011:8822: the popover ends at the row's buttons and opens to their left, over the lists it splits, so the
     // ΦΟΡΤΗΓΑ capacity column beside them stays in view (whole-frame r4: opened rightwards it covered «27/33 · 6 ελεύθερες»)
@@ -565,6 +586,7 @@
     };
     // what a part does: on a truck «before → after/33 · μπαίνει kη» (Figma 2011:8832); staying, the day it leaves by
     const badgeHTML = (p) => {
+      if (st.start) return '';
       const tr = p.rt ? st.trucks.find((t) => t.rtId === p.rt) : null;
       if (tr) {
         const after = tr.pal + (_valid(p.pal) || 0);
@@ -590,6 +612,10 @@
         + (warn ? ' <span class="wn5-miss">' + k.esc(warn) + '</span>' : '');
     };
     const partHTML = (p, i) => {
+      if (st.start) {
+        return '<div class="wn5-part" data-i="' + i + '"><span class="wn5-part-u wn5-part-n">Μέρος ' + (i + 1) + '</span>'
+          + '<input class="wn5-hm wn5-part-p" data-part-pal data-i="' + i + '" inputmode="decimal" aria-label="Παλέτες του μέρους ' + (i + 1) + '" value="' + k.esc(p.pal) + '"><span class="wn5-part-u">παλέτες</span></div>';
+      }
       const opts = '<option value="">— διάλεξε —</option><option value="stay"' + (p.t === 'stay' ? ' selected' : '') + '>μένει στη Βέροια</option>'
         + st.trucks.map((t) => '<option value="rt:' + t.rtId + '"' + (p.t === 'rt:' + t.rtId ? ' selected' : '') + '>' + k.esc(t.label) + '</option>').join('');
       return '<div class="wn5-part" data-i="' + i + '"><select data-part-target data-i="' + i + '" aria-label="Πού πάει το μέρος ' + (i + 1) + '">' + opts + '</select>'
@@ -597,9 +623,12 @@
         + '<span class="wn5-hub-sp"></span><span class="wn5-pbadge" data-i="' + i + '">' + badgeHTML(p) + '</span></div>';
     };
     const draw = () => {
-      d.body.innerHTML = '<p class="wn5-split-i">Πού πάει κάθε μέρος· το άθροισμα πρέπει να είναι ' + k.esc(k.pal(st.total)) + '.</p>'
+      d.body.innerHTML = (st.start
+        ? '<p class="wn5-split-i">' + k.esc('Άθροισμα ' + k.pal(st.total) + '· κάθε μέρος μένει «ΠΡΟΣ ΑΝΑΘΕΣΗ».') + '</p>'
+          + (st.inDraft ? '<p class="wn5-split-i wn5-miss">' + k.esc('Είναι σε πρόχειρο φορτίο· εκεί θα φανεί σπασμένο.') + '</p>' : '')
+        : '<p class="wn5-split-i">Πού πάει κάθε μέρος· το άθροισμα πρέπει να είναι ' + k.esc(k.pal(st.total)) + '.</p>')
         // no truck loads at Veroia that day: said, never an empty list that reads as «not loaded yet» (principle 1)
-        + (st.trucks.length ? '' : '<p class="wn5-split-i wn5-split-none">' + k.esc('Κανένα φορτηγό δεν φορτώνει στη Βέροια ' + (st.day ? k.dayShort(st.day) : '—')) + '</p>')
+        + (st.trucks.length || st.start ? '' : '<p class="wn5-split-i wn5-split-none">' + k.esc('Κανένα φορτηγό δεν φορτώνει στη Βέροια ' + (st.day ? k.dayShort(st.day) : '—')) + '</p>')
         + st.parts.map(partHTML).join('') + '<div class="wn5-split-f"><button type="button" class="wi4-link" data-act="more">+ ακόμη ένα μέρος</button><span class="wn5-hub-sp"></span>' + sumHTML() + '</div>';
       d.refresh();
     };
@@ -638,7 +667,7 @@
       const b = ev.target.closest('[data-act]');
       if (!b || b.disabled || !_live()) return;
       if (b.dataset.act === 'cancel') { if (!d.busy) k.close(d); }
-      else if (b.dataset.act === 'more') { st.parts.push({ t: '', rt: null, pal: '', stops: null }); draw(); }
+      else if (b.dataset.act === 'more') { st.parts.push({ t: st.start ? 'stay' : '', rt: null, pal: '', stops: null }); draw(); }
       else if (b.dataset.act === 'lb') {
         const p = st.parts[Number(b.dataset.i)];
         // not while a press is on its way: its bytes are the request (rule 3, decision 44)
@@ -653,17 +682,21 @@
       else if (b.dataset.act === 'save' && _partsOk(st)) {
         k.send(d, { method: 'POST', path: '/plan/pieces/split', body: _splitBody(st), requestId: st.slot.id }, 'Αποθηκεύτηκε το σπάσιμο', {
           slot: st.slot, intl: true,
+          // 114: refused at the loading point (not_at_hub) = the load took a truck since the board was read, or the
+          // owner closed new splits there (114's partial rollback) — said in words, the Worker's «στη Βέροια» would
+          // point at the wrong place
+          onFail: st.start ? (e) => { if (e && e.code === 'not_at_hub') WN5Act.strip(d.msg, k.clientErr('not_at_start', 'Δεν σπάει εδώ: μπήκε σε φορτηγό ή το σπάσιμο στη φόρτωση έκλεισε — ανανέωσε')); } : null,
           // request_reused: saved by the first press — the piece is no longer on the board's lists (it split)
           onReused: (b2) => (!(b2 && ((b2.hub || []).some((h) => h.piece_id === pid) || (b2.waiting || []).some((w) => w.piece_id === pid))) ? { piece_id: pid } : null),
         });
       }
     });
-    _open = true;                       // the panel comes back open after the re-read of a save
+    if (!start) _open = true;           // the panel comes back open after the re-read of a save (not for a Weekly row)
     draw();
     k.place(d);
     k.gate(d);
     return d;
   }
 
-  window.WN5Hub = { shelfHTML, open, close, split, _truck, tick, more, toPanel, nfDay, nfWin, nfHm, nfDrop, nfReset, nfLater, nfAddOpen, nfPick, nfCreate };
+  window.WN5Hub = { shelfHTML, open, close, split, _truck, tick, more, waitMore, toPanel, nfDay, nfWin, nfHm, nfDrop, nfReset, nfLater, nfAddOpen, nfPick, nfCreate };
 })();
