@@ -9316,6 +9316,16 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:10px; 
 .wn5-sub.wn5-rota > :is(.wn5-kd, .wn5-ad) { flex-direction:column; align-items:flex-start; justify-content:center; padding-left:12px; padding-right:0; }
 .wn5-sub.wn5-rota > :is(.wn5-fl, .wn5-afl, .wn5-kto, .wn5-ato) { padding-left:34px; align-items:flex-start; justify-content:center; }
 .wn5-sub.wn5-rota:hover { background:var(--wi4-info-bg); }
+/* Owner 25/11 (item D): a day's old requests fold into «παλιά αιτήματα · N», the local pickups near Veroia stand in
+   «Τοπικές παραλαβές · N» at the end of the day — a thin grey head over the same rows, nothing hidden. */
+.wn5-dgrp-h { display:flex; align-items:center; gap:6px; padding:6px 16px; font-size:10.5px; font-weight:600; letter-spacing:.3px; color:var(--wi4-grey-2); border-top:1px solid var(--wi4-line); }
+.wn5-dgrp-old > summary { cursor:pointer; list-style:none; }
+.wn5-dgrp-old > summary::-webkit-details-marker { display:none; }
+.wn5-dgrp-old > summary::before { content:'›'; font-size:12px; }
+.wn5-dgrp-old[open] > summary::before { content:'∨'; font-size:10px; }
+.wn5 .wi4-box.un.wn5-un-loc { background:var(--surface-card); border:1px dashed var(--wi4-grey-2); color:var(--wi4-grey-2); }
+.wn5-q-old { margin-left:12px; font-size:11px; color:var(--wi4-grey-2); }
+.wn5-qcards-old { margin-top:6px; opacity:.85; }
 /* «ΤΟΠΙΚΑ» under the board (owner 8/11, Figma 2607:8131): a white card, one line per day, the local driver, his moves */
 .wn5-locals { margin:14px 0 24px; background:var(--surface-card); border:1px solid var(--wi4-line); border-radius:8px; font-size:12px; color:var(--wi4-ink); }
 .wn5-locals > summary { display:flex; align-items:baseline; gap:10px; padding:10px 16px; cursor:pointer; list-style:none; }
@@ -10749,6 +10759,11 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
 .wn5a-osub.free { color:var(--ok); }
 .wn5a-osub.dim { color:var(--wi4-grey-2); }
 .wn5a-none { padding:6px 10px; font-size:var(--text-xs); color:var(--text-dim); }
+/* owner 25/11: «+ Νέος οδηγός» at the end of the driver list of «Ανάθεση» */
+.wn5a-new { display:flex; flex-wrap:wrap; align-items:center; gap:6px; padding:6px 10px; font-size:var(--text-xs); color:var(--accent); border-top:1px solid var(--border); }
+.wn5a-new span { flex:0 0 100%; overflow-wrap:anywhere; }
+.wn5a-new button { font:inherit; padding:2px 8px; border:1px solid var(--accent); border-radius:4px; background:transparent; color:var(--accent); cursor:pointer; }
+.wn5a-new button:hover { background:var(--accent); color:#fff; }
 /* the line of the vehicle: «ΚΖΗ 2108 · Δευ 12/10» and «12 → 24/33»; over 33 the number red, never a refusal (F31) */
 .wn5a-line { display:flex; align-items:center; gap:8px; padding:8px 10px; border-radius:6px; background:var(--surface-sunken); }
 .wn5a-lt { flex:1; min-width:0; font:600 12px 'DM Sans',sans-serif; color:var(--wi4-ink); }

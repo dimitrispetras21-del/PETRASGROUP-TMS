@@ -1200,6 +1200,11 @@ async function preloadReferenceData() {
     REF_DATA._loading  = null;
     _refDataRevalidate();
     return REF_DATA;
+  }, (e) => {
+    // a failed read is asked again by the next caller (as refLocationsFetch): kept, it rejected every later call until
+    // a page reload, so the national board's «Ανανέωση» could never bring the coordinates (code review high 26/11)
+    REF_DATA._loading = null;
+    throw e;
   });
 
   return REF_DATA._loading;

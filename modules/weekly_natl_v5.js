@@ -72,6 +72,9 @@ let _okAt = null;        // when the board arrived (display only)
 let _lastErr = null;     // the PlanError (or local error) of the last read
 let _idsErr = null;      // GET /plan/lookups failed: place names cannot be read (live fix 1, 28/10) — shown, never «—» in silence
 let _idsOk = false;      // the catalogue is loaded: only then are ids named (a pending one is not «unknown id»)
+let _refErr = null;      // the reference LOCATIONS (coordinates of the local pickups) failed to load: said, never silent
+let _qOld = false;       // the old requests' cards opened in the ΕΠΟΜΕΝΑ band
+let _oldOpen = false;    // «παλιά αιτήματα · N» opened by the user: kept across repaints until the week changes
 let _idsFailAt = 0;      // when it last failed: asked again after 60 s or on the user's ↻, never on every reload
 let _idsForce = false;   // the user's ↻ (reload('user')) asks again at once
 let _stale = null;       // a save landed but the board read after it failed: {at} — the rows show the state BEFORE it (F11)
@@ -245,7 +248,7 @@ function _week(n, home) {
   window.WNATL.week = v;
   window.renderWeeklyNatl();
 }
-function _onWeekChange() { _toToday = true; _closedDays.clear(); _qAll = false; _qRaw = ''; _sIdx = 0; _stale = null; _rdClose(); }
+function _onWeekChange() { _toToday = true; _closedDays.clear(); _qAll = false; _qOld = false; _oldOpen = false; _qRaw = ''; _sIdx = 0; _stale = null; _rdClose(); }
 
 // ═══ Load ═══
 // Π-23 (owner 28/10): a reload opened the current week, not the one the dispatcher was on. The tab keeps its week in
@@ -296,6 +299,12 @@ async function render() {
   // again when the catalogue lands (only if this render still owns the screen).
   if (!idsDone) await Promise.race([ids, new Promise((r) => setTimeout(r, 1500))]);
   if (!idsDone) ids.then(() => { if (seq === _seq && active() && _board) paint(); });
+  // the coordinates of the local pickups (owner 25/11) come with the reference data the login already started: the
+  // board never waits for them, it paints again when they land, and a failure is said in _refHTML (principle 1)
+  if (typeof REF_DATA !== 'undefined' && !REF_DATA._loaded && typeof preloadReferenceData === 'function') {
+    preloadReferenceData().then(() => { _refErr = null; }, (e) => { _refErr = e || { message: 'άγνωστο σφάλμα' }; })
+      .then(() => { if (seq === _seq && active() && _board && _refChanged()) paint(); });
+  }
   if (seq !== _seq || !active()) return;               // a newer render, or another page, owns the screen now
   if (err && err._sessionGone) return;                  // the login page is on its way; nothing to draw
   if (!err && (!board || typeof board !== 'object' || board.week !== week)) {
@@ -493,7 +502,39 @@ function _modelOpts() {
   const mo = { today: _today() };
   if (hubId != null) mo.hubId = hubId;
   if (_idsOk && typeof PlanIds !== 'undefined' && typeof PlanIds.place === 'function') mo.place = (id) => PlanIds.place(id);
+  const co = coordOf();
+  if (co) mo.coord = co;
   return mo;
+}
+// After the reference data lands: paint again only when it changes what the board shows (a row becomes a local pickup,
+// or the failure strip appears) and nothing is open on it — a paint closes the open menu / window (the form and compose
+// rigs caught a «+» or a form closed under the user's click). Otherwise the next paint (every save, every week) has it.
+function _refChanged() {
+  if (!_m || document.querySelector('.wn5-dlg, .wi4-dlg[role="dialog"], .wn5-menu')) return false;
+  if (_refErr) return !!_refHTML(_m);
+  let m2 = null;
+  try { m2 = L().model(_board, _modelOpts()); } catch (_) { return false; }
+  const loc = (m) => m.days.flatMap((d) => d.rows).filter((r) => r.pickupLocal).map((r) => r.key).join();
+  return loc(m2) !== loc(_m);
+}
+// The coordinates of a place by its /plan id, for WN5L.localPlace (owner 25/11, local pickups): /plan/lookups carries
+// none, so the place's legacy id is looked up in the reference LOCATIONS (Latitude / Longitude, core/api.js
+// preloadReferenceData). null while either catalogue is not loaded: then no row is a local pickup and _refHTML says why.
+let _coordSrc = null, _coordMap = null;
+function coordOf() {
+  if (!_idsOk || typeof PlanIds === 'undefined' || typeof getRefLocations !== 'function') return null;
+  const recs = typeof REF_DATA !== 'undefined' && REF_DATA._loaded ? getRefLocations() : null;
+  if (!recs || !recs.length) return null;
+  if (_coordSrc !== recs) {
+    _coordSrc = recs;
+    _coordMap = new Map();
+    for (const r of recs) {
+      const f = (r && r.fields) || {};
+      const num = (v) => (v == null || v === '' ? NaN : Number(v));
+      _coordMap.set(r.id, { lat: num(f.Latitude), lon: num(f.Longitude) });
+    }
+  }
+  return (id) => { const p = PlanIds.place(id); return (p && _coordMap.get(p.legacy_id)) || null; };
 }
 // The model of a board JSON read by another page, with the board's own options (hub, today): «Παραγγελίες ›
 // Εβδομάδα» numbers its nationals from it (WN5L.boardNumbers), so its rows and numbers are the board's, never a copy.
@@ -623,7 +664,7 @@ function _rootHTML() {
   const m = _m || L().model({ week: _sat, cycles: [], waiting: [], hub: [], notices: [] }, { today: _today() });
   const known = !!_m;
   return `<div class="wi4 wn5" data-week="${_esc(_sat)}" data-state="${_esc(_state)}"${_stale && _state === 'err' ? ' data-stale="1"' : ''}>`
-    + _barHTML() + _errHTML() + (known ? _idsHTML() + _shapeHTML(m) : '') + _boardHTML(m, known) + '</div>';
+    + _barHTML() + _errHTML() + (known ? _idsHTML() + _refHTML(m) + _shapeHTML(m) : '') + _boardHTML(m, known) + '</div>';
 }
 function _barHTML() {
   const w = Number(window.WNATL && window.WNATL.week);
@@ -736,6 +777,13 @@ function _idsHTML() {
   return `<div class="wn5-strip" data-kind="client" data-ids="failed" role="alert"><b>ΟΝΟΜΑΤΑ ΤΟΠΩΝ</b><span>Οι κατάλογοι τόπων δεν φορτώθηκαν — οι τόποι δείχνουν «—»: ${_esc(_idsErr.message || '')}</span>`
     + '<button type="button" class="wi4-link wn5-strip-act" data-act="reload" onclick="WN5.reload(\'user\')">Ανανέωση <span class="wn5-ico-re" aria-hidden="true">↻</span></button></div>';
 }
+// The reference LOCATIONS did not load (owner 25/11): the local pickups cannot be told by distance, so every waiting
+// VS export stays ΠΡΟΣ ΑΝΑΘΕΣΗ and this strip says why — only on a week that has such a load.
+function _refHTML(m) {
+  if (!_refErr || !m || !m.days.some((d) => d.rows.some((r) => r.kind === 'unassigned' && r.vsExport))) return '';
+  return `<div class="wn5-strip" data-kind="client" data-ref="failed" role="alert"><b>ΤΟΠΙΚΕΣ ΠΑΡΑΛΑΒΕΣ</b><span>Οι συντεταγμένες των τόπων δεν φορτώθηκαν — οι τοπικές παραλαβές μετριούνται ως ΠΡΟΣ ΑΝΑΘΕΣΗ: ${_esc(_refErr.message || '')}</span>`
+    + '<button type="button" class="wi4-link wn5-strip-act" data-act="reload" onclick="WN5.reload(\'user\')">Ανανέωση <span class="wn5-ico-re" aria-hidden="true">↻</span></button></div>';
+}
 // A part of the board WN5L could not place (a stop with an unknown side, two hubs): said on screen and logged once
 // per distinct line — never dropped in silence (principle 1).
 function _shapeHTML(m) {
@@ -803,8 +851,16 @@ function _addDay(ymd, n) { const [y, mo, d] = ymd.split('-').map(Number); return
 function _qbandHTML(m, known) {
   const search = _searchHTML(known);
   if (!known) return `<div class="wi4-q wn5-q">${search}<div class="wi4-q-hd"><span>ΕΠΟΜΕΝΑ · ${_state === 'loading' ? '…' : '—'}</span></div></div>`;
-  const q = m.queue;
-  if (!q.length) return `<div class="wi4-q wn5-q">${search}<div class="wi4-q-hd"><span>ΕΠΟΜΕΝΑ · <span class="wn5-lc">κανένα</span></span></div></div>`;
+  // owner 25/11: «ΕΠΟΜΕΝΑ · N» is the week's own; the requests older than the week are one line beside it,
+  // «παλιά αιτήματα · N ▾», whose cards open in place (never hidden, owner 15/11)
+  const qOld = m.queue.filter((it) => it.old);
+  const q = m.queue.filter((it) => !it.old);
+  // what the count leaves out is said beside it (owner rule 15/11): the local pickups shown this week, in their group
+  const nLoc = m.days.reduce((a, d) => a + d.rows.filter((r) => r.kind === 'unassigned' && r.vs && r.pickupLocal).length, 0);
+  const locTxt = nLoc ? `<span class="wn5-q-old wn5-q-loc" data-q-loc="${nLoc}" title="Στο τέλος της ημέρας τους, «Τοπικές παραλαβές»">τοπικές παραλαβές · ${nLoc}</span>` : '';
+  const oldBtn = locTxt + (qOld.length ? `<button type="button" class="wi4-link wn5-q-old" data-q-old="${qOld.length}" aria-expanded="${_qOld}" onclick="WN5._qOldTog()">παλιά αιτήματα · ${qOld.length} ${_qOld ? '▴' : '▾'}</button>` : '');
+  const oldCards = _qOld && qOld.length ? `<div class="wn5-qcards wn5-qcards-old">${qOld.map((it) => _qcardHTML(it, m)).join('')}</div>` : '';
+  if (!q.length) return `<div class="wi4-q wn5-q">${search}<div class="wi4-q-hd"><span>ΕΠΟΜΕΝΑ · <span class="wn5-lc">κανένα</span></span>${oldBtn}</div>${oldCards}</div>`;
   // Three cards at 1920 (Figma 2011:7745 / H1). At ≤1600 three cards of ~350px cut the client and its «+N» away
   // (fidelity T5 r2), so two show and «Όλα 3 ▾» — Figma's own link at the end of the band — opens the rest. The same
   // query and the same one repaint on crossing 1600 as the stops (_visPts).
@@ -814,8 +870,8 @@ function _qbandHTML(m, known) {
   const nVs = String(q.length);
   const more = q.length > max ? `<button type="button" class="wi4-link wi4-q-all" onclick="WN5._qMore()">${_qAll ? 'Λιγότερα ▴' : `Όλες οι ${q.length} ▾`}</button>` : '';
   // Owner 31/10 (no «κομμάτι» on the board): the count is the VS orders, as the cards; their pieces are on the rows.
-  return `<div class="wi4-q wn5-q">${search}<div class="wi4-q-hd"><span>ΕΠΟΜΕΝΑ · ${nVs}</span><span class="wi4-q-n">${_esc(_qSub(q, m.today))}</span></div>`
-    + `<div class="wn5-qcards">${shown.map((it) => _qcardHTML(it, m)).join('')}</div>${more}</div>`;
+  return `<div class="wi4-q wn5-q">${search}<div class="wi4-q-hd"><span>ΕΠΟΜΕΝΑ · ${nVs}</span><span class="wi4-q-n">${_esc(_qSub(q, m.today))}</span>${oldBtn}</div>`
+    + `<div class="wn5-qcards">${shown.map((it) => _qcardHTML(it, m)).join('')}</div>${more}${oldCards}</div>`;
 }
 // «2 VS από Δευ · 1 Παρ» (Figma 2011:7745): how many of the queue fall on each day; «VS» once, on the first.
 function _qSub(q, today) {
@@ -849,6 +905,11 @@ function _qcardHTML(it, m) {
     + `<span class="wi4-dc ${_chipCls(it.day, today)}">${_esc(_dl(it.day))}</span>`
     + `<span class="wi4-qcard-t"><span class="wi4-l1 wn5-qc-l1" title="${_esc(it.title)}">${short}</span><span class="wi4-l2">${_esc(_pal(it.pallets, it.palUnknown))}${late ? ' · <span class="wn5-late-w">αργό</span>' : ''}</span></span>`
     + '<button type="button" class="wi4-btn sm" data-act="assign">Ανάθεση</button></div>';
+}
+function _qOldTog() {
+  _qOld = !_qOld;
+  const q = document.querySelector('#content .wn5 .wn5-q');
+  if (q && _m) q.outerHTML = _qbandHTML(_m, true);
 }
 function _qMore() {
   _qAll = !_qAll;
@@ -896,10 +957,24 @@ function _dayHTML(d, m, known, no) {
   const head = `<div class="wi4-dayh wn5-dayh"${fold ? ` role="button" tabindex="0" aria-expanded="${!closed}" onclick="WN5._dayTog('${d.date}')"` : ''}>`
     + (fold || skel ? `<span class="wi4-chev">${CHEV}</span>` : '<span class="wi4-dayh-sp"></span>')
     + `<span class="wi4-dayn">${_esc(name)} <span class="wi4-dayd">${_esc(date)}</span></span>${tail}</div>`;
-  const body = fold ? `<div class="wi4-day-body">${d.rows.map((r) => _rowHTML(r, m, no)).join('')}</div>`
+  const body = fold ? `<div class="wi4-day-body">${_dayRowsHTML(d, m, no)}</div>`
     : skel ? `<div class="wi4-day-body wn5-skel-b" aria-hidden="true">${'<div class="wn5-skel"><span></span><span></span><span></span><span></span><span></span><span></span></div>'.repeat(2)}</div>` : '';
   return `<section class="wi4-day wn5-day${today ? ' today' : ''}${empty ? ' empty' : ''}${closed ? ' closed' : ''}" data-date="${d.date}">${head}${body}</section>`;
 }
+// A day's rows in three parts (owner 25/11): the old requests first, folded into one line «παλιά αιτήματα · N» that
+// opens in place (never hidden, owner 15/11); the day's own rows; then «Τοπικές παραλαβές · N», the VS exports the
+// local driver picks up near Veroia (WN5L.localPlace) — same rows, same «ανάθεση», only out of the trucks' list.
+function _dayRowsHTML(d, m, no) {
+  const old = d.rows.filter((r) => r.kind === 'unassigned' && r.old);
+  const loc = d.rows.filter((r) => r.kind === 'unassigned' && !r.old && r.pickupLocal);
+  const rest = d.rows.filter((r) => !(r.kind === 'unassigned' && (r.old || r.pickupLocal)));
+  const html = (list) => list.map((r) => _rowHTML(r, m, no)).join('');
+  return (old.length ? `<details class="wn5-dgrp wn5-dgrp-old" data-grp="old"${_oldOpen ? ' open' : ''} ontoggle="WN5._oldTog(this.open)">`
+      + `<summary class="wn5-dgrp-h">παλιά αιτήματα · ${old.length}</summary>${html(old)}</details>` : '')
+    + html(rest)
+    + (loc.length ? `<div class="wn5-dgrp wn5-dgrp-loc" data-grp="local"><div class="wn5-dgrp-h">Τοπικές παραλαβές · ${loc.length}</div>${html(loc)}</div>` : '');
+}
+function _oldTog(open) { _oldOpen = !!open; }
 // Days are folded only by the user's click (owner 12/10), and stay as the user left them until the week changes.
 function _dayTog(date) {
   if (!DAY_RE.test(String(date || ''))) return;
@@ -1404,6 +1479,9 @@ function _boxHTML(t, r) {
   // side it assigns is the one with content — no «← ΚΑΘΟΔΟΣ» line.
   // Ε1 (owner 2/11): a part in a draft of «Σύνθεση φορτίων» stays this row, with a small grey «σε πρόχειρο» (filled
   // by WN5Compose from GET /plan/drafts; '' while its flag is off)
+  // a local pickup (owner 25/11) is no truck's work: a quiet «ΤΟΠΙΚΟΣ», still the same assignment window if one is needed
+  if (t.type === 'un' && r && r.pickupLocal) return '<button type="button" class="wi4-box un wn5-un-loc" data-act="assign" title="Τοπική παραλαβή · ανάθεση οχήματος αν χρειαστεί"><span class="wi4-l1">ΤΟΠΙΚΟΣ</span></button>'
+    + (typeof WN5Compose !== 'undefined' ? WN5Compose.markHTML(r && r.pieceIds) : '');
   if (t.type === 'un') return '<button type="button" class="wi4-box un" data-act="assign" title="Ανάθεση οχήματος"><span class="wi4-l1">ΠΡΟΣ ΑΝΑΘΕΣΗ</span></button>'
     + (typeof WN5Compose !== 'undefined' ? WN5Compose.markHTML(r && r.pieceIds) : '')
     // 114 (owner 8/11, 25/11): «⋯» → «Σπάσε…» of one load waiting at its loading point (WN5L canSplit: the base allows it)
@@ -1923,6 +2001,8 @@ function _applySearch(scroll) {
     if (hit && el.classList.contains('wn5-row')) hits.push(el);
   });
   if (_sIdx >= hits.length) _sIdx = 0;
+  // a match among the folded old requests opens them (owner 25/11: folded, never hidden from a search)
+  for (const el of hits) { const g = el.closest('details.wn5-dgrp-old'); if (g && !g.open) { g.open = true; _oldOpen = true; } }
   const n = document.getElementById('wn5-search-n');
   // Figma 2036:7902: «1/2» in the same key cap as «/». No match keeps the «/» cap (Δ12 2069:10409, never «0/0» and
   // never «—», which Δ12 keeps for an unknown count); the strip below says it in words.
@@ -2062,6 +2142,9 @@ const WN5 = {
   reload,
   findAfterReuse,
   modelOf,
+  coordOf,
+  _oldTog,
+  _qOldTog,
   snapshot,
   state,
   markClosed,
