@@ -1479,14 +1479,16 @@ function _boxHTML(t, r) {
   // side it assigns is the one with content — no «← ΚΑΘΟΔΟΣ» line.
   // Ε1 (owner 2/11): a part in a draft of «Σύνθεση φορτίων» stays this row, with a small grey «σε πρόχειρο» (filled
   // by WN5Compose from GET /plan/drafts; '' while its flag is off)
-  // a local pickup (owner 25/11) is no truck's work: a quiet «ΤΟΠΙΚΟΣ», still the same assignment window if one is needed
-  if (t.type === 'un' && r && r.pickupLocal) return '<button type="button" class="wi4-box un wn5-un-loc" data-act="assign" title="Τοπική παραλαβή · ανάθεση οχήματος αν χρειαστεί"><span class="wi4-l1">ΤΟΠΙΚΟΣ</span></button>'
-    + (typeof WN5Compose !== 'undefined' ? WN5Compose.markHTML(r && r.pieceIds) : '');
-  if (t.type === 'un') return '<button type="button" class="wi4-box un" data-act="assign" title="Ανάθεση οχήματος"><span class="wi4-l1">ΠΡΟΣ ΑΝΑΘΕΣΗ</span></button>'
-    + (typeof WN5Compose !== 'undefined' ? WN5Compose.markHTML(r && r.pieceIds) : '')
-    // 114 (owner 8/11, 25/11): «⋯» → «Σπάσε…» of one load waiting at its loading point (WN5L canSplit: the base allows it)
-    + (r && r.canSplit && typeof WN5Hub !== 'undefined'
-      ? `<button type="button" class="wn5-wmore" aria-label="Περισσότερα" title="Σπάσε σε μέρη" onclick="event.stopPropagation();WN5Hub.waitMore(${_id(r.pieceIds[0])}, this)">⋯</button>` : '');
+  if (t.type === 'un') {
+    const tail = (typeof WN5Compose !== 'undefined' ? WN5Compose.markHTML(r && r.pieceIds) : '')
+      // 114 (owner 8/11, 25/11): «⋯» → «Σπάσε…» of one load waiting at its loading point (WN5L canSplit: the base allows it).
+      // A local pickup keeps it too: it waits at its own loading point like any other (26/11, the two features met here).
+      + (r && r.canSplit && typeof WN5Hub !== 'undefined'
+        ? `<button type="button" class="wn5-wmore" aria-label="Περισσότερα" title="Σπάσε σε μέρη" onclick="event.stopPropagation();WN5Hub.waitMore(${_id(r.pieceIds[0])}, this)">⋯</button>` : '');
+    // a local pickup (owner 25/11) is no truck's work: a quiet «ΤΟΠΙΚΟΣ», still the same assignment window if one is needed
+    if (r && r.pickupLocal) return '<button type="button" class="wi4-box un wn5-un-loc" data-act="assign" title="Τοπική παραλαβή · ανάθεση οχήματος αν χρειαστεί"><span class="wi4-l1">ΤΟΠΙΚΟΣ</span></button>' + tail;
+    return '<button type="button" class="wi4-box un" data-act="assign" title="Ανάθεση οχήματος"><span class="wi4-l1">ΠΡΟΣ ΑΝΑΘΕΣΗ</span></button>' + tail;
+  }
   // The tile is 28px high: a long name is cut by the wi4 rule with a visible «…» and stays whole in title. A tile with
   // nothing under the name (a partner without a plate, 2i) gives the name both lines.
   if (!t.line2) return `<span class="wi4-box ${t.type} wn5-box1"><span class="wi4-l1" title="${_esc(t.line1)}">${_esc(t.line1)}</span></span>`;
