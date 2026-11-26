@@ -1783,8 +1783,18 @@
         const by = items.map((x) => x.deliver_to).filter((x) => x && !isNaN(new Date(x).getTime())).sort((a, b) => new Date(a) - new Date(b))[0];
         gs.push({ head, day, sub: (day ? ' · ' + _dayShort(day) : '') + (by ? ' · στη Βέροια ως ' + _wd(_ymdOf(by)) + ' ' + _hm(by) : '') + _cnt(items) + ' · ' + _palU(_sum(items.map((x) => x.pallets)), _unkN(items.map((x) => x.pallets))) + 'π', items });
       }
+      // owner 25/11: a VS export picked up near Veroia is the local driver's (WN5L.localPlace, the board's one rule):
+      // still offered, marked «τοπική» and after the trucks' own requests. A place without coordinates is not local.
+      const co = typeof WN5L !== 'undefined' && typeof WN5 !== 'undefined' && typeof WN5.coordOf === 'function' ? WN5.coordOf() : null;
+      // the board's hub (PlanIds.hub, as _modelOpts), then the cycles' Veroia stop: one hub for the board and this list
+      const hubL = (typeof PlanIds !== 'undefined' && typeof PlanIds.hub === 'function' && PlanIds.hub()) || st.hub;
+      const locOf = (it) => (it.nat_from_location_id != null ? it.nat_from_location_id : it.position_location_id);
+      for (const g of gs) {
+        g.local = !!co && g.items.every((it) => it.kind === 'vs_export' && WN5L.localPlace(locOf(it), co, hubL) === true);
+        if (g.local) g.chip = 'τοπική';
+      }
       const far = (g) => (g.day && st.day ? Math.abs(_dayDiff(st.day, g.day)) : 1e6);
-      gs.sort((a, b) => far(a) - far(b) || String(a.day || '').localeCompare(String(b.day || '')));
+      gs.sort((a, b) => (a.local ? 1 : 0) - (b.local ? 1 : 0) || far(a) - far(b) || String(a.day || '').localeCompare(String(b.day || '')));
       groups.push(...gs);
     }
     return groups;
