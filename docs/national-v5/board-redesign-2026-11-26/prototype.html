@@ -1,0 +1,340 @@
+<!doctype html><html lang="el"><head><meta charset="utf-8"><title>Εβδομαδιαίο Εθνικών · ζωντανό πρωτότυπο</title><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet"><style>html,body{margin:0;background:#E9EAEE}body{padding:18px}</style></head><body><style>/* one idea: the line is written the way the dispatcher writes it. Ink, one blue, one warning colour. Two type sizes. */
+.pz{--ink:#0B1220;--body:#3A3F4B;--help:#6B7280;--faint:#B4B8C0;--line:#EEF0F2;--bg:#F5F6F7;--card:#fff;
+  --red:#C92A31;--blue:#0284C7;--blue-bg:#E0F2FE;--warn:#A8520A;--warn-line:#E8B45A;--warn-bg:#FFF7E8;--navy:#0B1929;
+  --e:cubic-bezier(.23,1,.32,1);font:400 13.5px/1.35 'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;
+  color:var(--body);background:var(--bg);display:grid;grid-template-columns:52px minmax(0,1fr);min-width:1240px;
+  border-radius:14px;overflow:hidden;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+.pz *{box-sizing:border-box}
+.pz button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+.pz-rail{background:var(--navy);display:flex;flex-direction:column;align-items:center;gap:14px;padding:14px 0}
+.pz-rail b{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;color:#E2E8F0;font-size:15px}
+.pz-rail b.t{background:#122238} .pz-rail b.on{background:rgba(56,189,248,.18);box-shadow:inset 3px 0 0 #38BDF8;color:#fff}
+.pz-main{padding:16px 22px 22px;min-width:0}
+.pz-hd{display:flex;align-items:baseline;gap:14px;height:38px}
+.pz-hd h3{margin:0;font:500 22px/1 'Manrope',sans-serif;letter-spacing:-.4px;color:var(--ink)}
+.pz-wk{display:flex;gap:2px;color:var(--help)} .pz-wk span{padding:3px 8px;border-radius:7px;font-size:13px}
+.pz-wk .on{background:#fff;color:var(--ink);font-weight:600}
+.pz-sp{flex:1}
+.pz-find{width:190px;height:32px;border:0;border-radius:999px;background:#fff;padding:0 14px;font:inherit;color:var(--ink);outline:0}
+.pz-find:focus{box-shadow:0 0 0 2px var(--blue)}
+.pz-tg{height:32px;padding:0 14px!important;border-radius:999px;background:#fff!important;font-weight:500;
+  transition:transform 140ms var(--e),background-color 120ms ease}
+.pz-tg[aria-pressed=true]{background:var(--blue)!important;color:#fff!important} .pz-tg:active{transform:scale(.97)}
+/* the one strip: what needs him now */
+.pz-now{display:flex;align-items:center;gap:8px;min-height:40px;margin:10px 0 6px;font-size:13px;flex-wrap:wrap}
+.pz-now .l{color:var(--help);margin-right:4px}
+.pz-chip{height:28px;padding:0 11px!important;border-radius:999px;background:#fff!important;color:var(--ink)!important;
+  white-space:nowrap;transition:transform 140ms var(--e)}
+.pz-chip b{color:var(--warn);font-weight:700;margin-right:5px} .pz-chip.red b{color:var(--red)} .pz-chip:active{transform:scale(.97)}
+.pz-chip.door{margin-left:auto} .pz-chip.door b{color:var(--ink);margin:0 5px}
+.pz-calm{color:var(--help)}
+/* days and rows */
+.pz-day{display:grid;grid-template-columns:54px minmax(0,1fr);margin-top:8px}
+.pz-dl{padding-top:9px;font-size:11.5px;font-weight:600;letter-spacing:.06em;color:var(--help)}
+.pz-day.today .pz-dl{color:var(--ink);font-weight:700} .pz-dl small{display:block;font-weight:500;letter-spacing:0;color:var(--faint)}
+.pz-rows{background:var(--card);border-radius:12px;padding:2px 0}
+.pz-day.today .pz-rows{box-shadow:0 1px 0 rgba(10,18,32,.04),0 10px 30px -18px rgba(10,18,32,.28)}
+.pz-row{display:grid;grid-template-columns:minmax(0,1fr) 78px 200px 78px minmax(0,1fr);align-items:center;min-height:36px;
+  padding:0 14px;border-top:1px solid var(--line);position:relative}
+.pz-row:first-child{border-top:0}
+.pz-row.done{opacity:.42}
+.pz-row.sel{background:#F7FAFC}
+.pz-side{display:flex;align-items:baseline;gap:6px;min-width:0;min-height:36px;padding:8px 0;cursor:text;flex-wrap:wrap}
+.pz-side.k{justify-content:flex-end;text-align:right}
+.pz-pc{white-space:nowrap;border-radius:5px;padding:0 3px;margin:0 -3px}
+.pz-pc b{color:var(--ink);font-weight:700} .pz-pc i{font-style:normal;font-size:11.5px;color:var(--help);margin-left:4px}
+ .pz-pc.new{animation:pzin 180ms var(--e)}
+.pz-plus{color:var(--faint)}
+.pz-empty{color:var(--faint)} .pz-empty.soon{color:var(--warn);font-weight:500}
+.pz-cap{font-size:11.5px;color:var(--help);text-align:center;white-space:nowrap} .pz-cap.over{color:var(--warn);font-weight:700}
+.pz-add{visibility:hidden;color:var(--faint);font-weight:600;margin:0 4px}
+.pz-row:hover .pz-add,.pz-row.sel .pz-add{visibility:visible}
+/* the plate is the hinge of the written line: no box, no column */
+.pz-trk{height:28px;padding:0 8px;display:flex;align-items:baseline;justify-content:center;gap:7px;cursor:text;white-space:nowrap;overflow:hidden}
+.pz-trk b{font-weight:700;color:var(--ink);line-height:28px} .pz-trk span{font-size:11.5px;color:var(--help);overflow:hidden;text-overflow:ellipsis}
+.pz-trk.par b{font-style:italic;font-weight:600}
+.pz-trk.none b{color:var(--red);font-weight:600;border-bottom:1.5px dotted var(--red);line-height:20px}
+/* writing: the cursor is in the line; proposals hang under it */
+.pz-in{flex:0 1 190px;min-width:90px;height:22px;border:0;outline:0;background:none;font:inherit;color:var(--ink);padding:0;
+  border-bottom:1.5px solid var(--blue)}
+.pz-side.k .pz-in{text-align:right} .pz-trk .pz-in{flex:1;border:0;line-height:28px;height:28px;font-weight:700}
+.pz-pop{position:absolute;z-index:6;top:34px;min-width:330px;max-width:460px;background:#fff;border-radius:12px;padding:5px;
+  box-shadow:0 18px 44px -18px rgba(10,18,32,.35),0 0 0 1px rgba(10,18,32,.07);transform-origin:top left;
+  animation:pzpop 125ms var(--e)}
+.pz-pop.k{transform-origin:top right}
+.pz-op{display:flex;align-items:baseline;gap:8px;min-height:32px;padding:6px 10px;border-radius:8px;white-space:nowrap}
+.pz-op.on{background:var(--blue-bg)} .pz-op b{color:var(--ink);font-weight:700}
+.pz-op i{font-style:normal;font-size:11.5px;color:var(--help)} .pz-op u{text-decoration:none;margin-left:auto;font-size:11.5px;color:var(--blue);padding-left:14px}
+.pz-op u.w{color:var(--warn)}
+.pz button.pz-undo{font-size:11.5px;color:var(--blue);font-weight:600;margin:0 6px;animation:pzfade 160ms ease}
+.pz-dir{display:grid;grid-template-columns:54px minmax(0,1fr) 200px minmax(0,1fr);margin-top:4px;font-size:11.5px;color:var(--faint)}
+.pz-dir .k{text-align:right;padding-right:92px} .pz-dir .a{padding-left:92px}
+.pz-key{display:inline-block;min-width:18px;padding:0 5px;border-radius:5px;background:#fff;color:var(--help);
+  font-size:11px;font-weight:600;text-align:center;box-shadow:0 0 0 1px var(--line)}
+.pz-help{display:flex;gap:16px;align-items:center;margin-top:14px;font-size:11.5px;color:var(--help);flex-wrap:wrap}
+.pz :is(button,.pz-side,.pz-trk):focus-visible{outline:2px solid var(--blue);outline-offset:1px}
+@keyframes pzin{from{opacity:0;transform:translateY(4px)}}
+@keyframes pzpop{from{opacity:0;transform:scale(.97)}}
+@keyframes pzfade{from{opacity:0}}
+@media (prefers-reduced-motion:reduce){.pz *{animation:none!important;transition:none!important}}
+
+/* the week scrolls inside its own frame and opens on today: today is the centre, past days stay above, open */
+.pz-scroll{max-height:640px;overflow-y:auto;scrollbar-width:thin;padding:2px 2px 8px;margin:0 -2px}
+
+/* what he typed and did not finish stays in the line, marked */
+.pz-draft{font-style:italic;color:var(--warn);border-bottom:1px dotted var(--warn-line);white-space:nowrap}
+.pz-op.none{color:var(--help)}
+.pz-side.ed{flex-wrap:nowrap;overflow:hidden} .pz-side.ed .pz-in{flex:1 1 120px}
+.pz-trk .pz-in{text-align:center;font-weight:700}
+/* a day always ends with room for one more line: quiet until he is there */
+.pz-row.ghost{min-height:30px;border-top:0} .pz-trk.new b{font-weight:500;color:transparent;transition:color 120ms ease}
+.pz-rows:hover .pz-trk.new b,.pz-day.today .pz-trk.new b{color:var(--faint)} .pz-trk.new:hover b{color:var(--help)}
+.pz-rail svg{width:16px;height:16px}
+.pz-dir{color:var(--help)}
+
+.pz .pz-chip.door.calm{color:var(--help)!important}
+
+/* the day's name stays in sight while its lines scroll */
+.pz-dl{position:sticky;top:6px;align-self:start}
+.pz-row.done .pz-trk.none b{opacity:1}
+</style>
+<div class="pz" id="pz">
+ <div class="pz-rail" aria-hidden="true"><b class="t"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></svg></b><b><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg></b><b class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg></b><b><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg></b><b><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 18V6H3v12h2M15 18H9M19 18h2v-5l-3-4h-4"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></svg></b></div>
+ <div class="pz-main">
+  <div class="pz-hd"><h3>Εθνικά</h3>
+   <span class="pz-wk"><span>46</span><span>47</span><span class="on">W48</span><span>49</span><span>50</span></span>
+   <span class="pz-sp"></span>
+   <input class="pz-find" data-find placeholder="πινακίδα ή οδηγός" aria-label="Βρες φορτηγό">
+   <button class="pz-tg" data-today aria-pressed="false">Σήμερα</button></div>
+  <div class="pz-now" data-now aria-live="polite"></div>
+  <div class="pz-dir" aria-hidden="true"><span></span><span class="k">↓ κάθοδος</span><span></span><span class="a">άνοδος ↑</span></div>
+  <div class="pz-scroll" data-scroll><div data-board></div></div>
+  <div class="pz-help"><span><span class="pz-key">↑</span> <span class="pz-key">↓</span> γραμμή</span>
+   <span><span class="pz-key">←</span> <span class="pz-key">→</span> πλευρά</span>
+   <span><span class="pz-key">↵</span> γράφω</span><span><span class="pz-key">N</span> νέα γραμμή</span><span><span class="pz-key">⌫</span> βγάζω το τελευταίο</span>
+   <span><span class="pz-key">⌘Z</span> αναίρεση</span><span class="pz-sp"></span>
+   <button class="pz-chip" data-reset>από την αρχή</button></div>
+ </div>
+</div>
+
+<script>(function(){
+var root=document.getElementById('pz'); if(!root) return;
+var CAP=33, TODAY='thu', SOON={thu:1,fri:1};
+var TR=[['HMA 4101','P 5021','Οδηγός Α'],['HMA 4102','P 5022','Οδηγός Β'],['HMA 4103','P 5023','Οδηγός Γ'],
+ ['HMA 4104','P 5024','Οδηγός Δ'],['HMA 4105','P 5025','Οδηγός Ε'],['HMA 4106','P 5026','Οδηγός Ζ'],
+ ['HMA 4107','P 5027','Οδηγός Η'],['HMA 4108','P 5028','Οδηγός Θ']];
+var PT=[['Συνεργάτης Α','XKA 3167',850],['Συνεργάτης Β','BEK 2210',240],['Συνεργάτης Γ','IMB 7245',420]];
+var DAYS=[['sat','ΣΑΒ',21],['sun','ΚΥΡ',22],['mon','ΔΕΥ',23],['tue','ΤΡΙ',24],['wed','ΤΕΤ',25],['thu','ΠΕΜ',26],
+ ['fri','ΠΑΡ',27],['sa2','ΣΑΒ',28,'W49']];
+var PAST={sat:1,sun:1,mon:1,tue:1,wed:1};
+function P(s){ if(!s) return []; return s.split(' + ').map(function(x){
+  var m=x.match(/^(\d+|\?) (.+?)(?: (\d{4}))? ([Α-Ω])(?: (\d+))?$/);
+  return {q:m[1]==='?'?null:+m[1],place:m[2],ref:m[3]||'',cl:'Πελάτης '+m[4],of:m[5]?+m[5]:0}; }); }
+var n=0; function R(day,trk,k,a){ return {id:++n,day:day,trk:trk,k:P(k),a:P(a),draft:{k:'',a:''}}; }
+var o=function(i){return {t:'own',i:i}}, p=function(i){return {t:'par',i:i}};
+var rows=[
+ R('sat',o(0),'33 Ασπρόπυργος Α','20 Θήβα Β'), R('sat',o(3),'26 Λάρισα Κ','33 Τρίπολη 9150 Θ'),
+ R('sun',o(2),'24 Αθήνα Ν','33 Άργος 6790 Η'),
+ R('mon',o(0),'33 Ασπρόπυργος Α','20 Θήβα Β'), R('mon',o(1),'18 Πάτρα Γ + 8 Αίγιο Δ','16 Σπάρτη 9180 Ε + 17 Σπάρτη 9181 Ε'),
+ R('mon',o(4),'33 Αθήνα Ν','33 Τρίπολη 9175 Θ'), R('mon',p(0),'? Πάτρα Ι',''), R('mon',o(5),'21 Καλαμάτα Ξ','28 Άργος 9177 Η'),
+ R('tue',o(2),'20 Ασπρόπυργος Α + 13 Οινόφυτα Ζ','33 Άργος 6801 Η'), R('tue',o(3),'33 Πάτρα Γ','22 Τρίπολη 9185 Θ + 11 Άργος 9186 Η'),
+ R('tue',o(6),'30 Αθήνα Ν','33 Σπάρτη 9188 Ε'), R('tue',p(1),'12 Ασπρόπυργος Α',''),
+ R('tue',o(7),'','18 Κόρινθος 9189 Μ + 15 Άργος 9190 Η'), R('tue',o(0),'33 Λάρισα Κ','33 Θήβα Β'),
+ R('wed',o(1),'24 Πάτρα Γ','16 Σπάρτη 9193 Ε + 17 Σπάρτη 9195 Ε'), R('wed',o(4),'33 Αθήνα Ν','33 Τρίπολη 9196 Θ'),
+ R('wed',o(5),'21 Καλαμάτα Ξ + 12 Τρίπολη Ο','33 Άργος 9197 Η'), R('wed',p(0),'? Πάτρα Ι',''),
+ R('wed',o(2),'','18 Τρίπολη 9200 Θ 23 + 15 Άργος 9203 Η'), R('wed',o(7),'33 Ασπρόπυργος Α','20 Θήβα Β + 13 Κόρινθος 9204 Μ'),
+ R('thu',null,'','5 Τρίπολη 9200 Θ 23'), R('thu',null,'','12 Κόρινθος 9214 Μ'), R('thu',null,'','33 Άργος 6814 Η'),
+ R('thu',o(1),'24 Αθήνα Ν','16 Τρίπολη 9201 Θ + 10 Άργος 9202 Η'), R('thu',o(5),'21 Καλαμάτα Ξ + 17 Τρίπολη Ο',''),
+ R('thu',o(3),'26 Λάρισα Κ',''), R('thu',p(1),'10 Ασπρόπυργος Α',''), R('thu',o(0),'20 Ασπρόπυργος Α + 13 Οινόφυτα Ζ','33 Σπάρτη 9206 Ε'),
+ R('fri',null,'33 Τρίκαλα 0797 Ρ',''), R('fri',o(4),'28 Αθήνα Ν',''), R('fri',o(6),'33 Πάτρα Γ','33 Σπάρτη 9211 Ε'),
+ R('sa2',o(7),'17 Πάτρα Σ','')];
+// what waits outside the sheet: the stock of «Μοίρασμα» (κάθοδος) and international orders not yet in the nationals (άνοδος)
+var store=[{id:1,d:'k',q:11,place:'Ασπρόπυργος',ref:'7003',cl:'Πελάτης Α'},{id:2,d:'k',q:5,place:'Τρίπολη',ref:'7004',cl:'Πελάτης Ο'},
+ {id:3,d:'k',q:14,place:'Αθήνα',ref:'7001',cl:'Πελάτης Ν'},{id:4,d:'a',q:7,place:'Λάρισα',ref:'0810',cl:'Πελάτης Κ',intl:1},
+ {id:5,d:'a',q:20,place:'Άργος',ref:'0801',cl:'Πελάτης Η',intl:1}];
+store.forEach(function(x){x.q0=x.q});
+var sel=null, edit=null, undoStack=[], undoRow=0, undoSide='a', fresh=null, onlyToday=false, active=false;
+var DL={}; DAYS.forEach(function(d){DL[d[0]]=d[1]+' '+d[2]});
+var esc=function(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})};
+var norm=function(s){return String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'')};
+var sum=function(a){return a.reduce(function(t,x){return t+(x.q||0)},0)};
+var byId=function(id){return rows.filter(function(r){return r.id===id})[0]};
+var empty=function(r){return !r.trk&&!r.k.length&&!r.a.length&&!r.draft.k&&!r.draft.a&&!r.draft.t};
+function snap(){ undoStack.push(JSON.stringify({rows:rows,store:store,n:n})); if(undoStack.length>60) undoStack.shift(); }
+function undo(){ if(undoStack.length<2&&!undoStack.length) return; var s=undoStack.pop(); if(!s) return;
+  s=JSON.parse(s); rows=s.rows; store=s.store; n=s.n; undoRow=0; fresh=null; edit=null; render(); }
+function changed(id,side){ undoRow=id; undoSide=side||'a'; }
+function prune(){ rows=rows.filter(function(r){return !empty(r)||(edit&&edit.row===r.id)}); }
+function pcHTML(x,isNew){ var small=x.ref?'-'+x.ref:x.cl;
+  return '<span class="pz-pc'+(isNew?' new':'')+'">'+(x.q==null?'':'<b>'+x.q+'</b> ')+esc(x.place)
+   +'<i>'+esc(small)+(x.price?' · '+x.price+' €':'')+(x.of?' · '+x.q+' από '+x.of:'')+(x.far?' · από '+DL[x.far]:'')+'</i></span>'; }
+function capHTML(r,side){ var a=r[side], s=sum(a), mine=sel&&sel.row===r.id&&sel.side===side;
+  if(!a.length||a.some(function(x){return x.q==null})||s===CAP||!r.trk) return '<span class="pz-cap"></span>';
+  if(s>CAP) return '<span class="pz-cap over">'+(s-CAP)+' πάνω</span>';
+  return '<span class="pz-cap">'+(mine?'χωρούν '+(CAP-s):'')+'</span>'; }
+function sideHTML(r,side){ var a=r[side], ed=edit&&edit.row===r.id&&edit.side===side;
+  var h=a.map(function(x,i){return pcHTML(x,fresh&&fresh.row===r.id&&fresh.side===side&&i===a.length-1)}).join('<span class="pz-plus">+</span>');
+  if(ed) h+=(a.length?'<span class="pz-plus">+</span>':'')+'<input class="pz-in" autocomplete="off" spellcheck="false" aria-label="Γράψε φορτίο">';
+  else if(r.draft[side]) h+=(a.length?'<span class="pz-plus">+</span>':'')+'<span class="pz-draft" title="Δεν γράφτηκε ακόμη">'+esc(r.draft[side])+'</span>';
+  else if(!a.length){ var soon=side==='a'&&SOON[r.day]&&r.trk&&r.trk.t==='own';
+    h+='<span class="pz-empty'+(soon?' soon':'')+'">'+(soon?'άδειο γύρισμα':'')+'</span>'; }
+  if(!ed&&undoRow===r.id&&undoSide===side) h+='<button class="pz-undo" data-undo>αναίρεση</button>';
+  else if(!ed) h+='<span class="pz-add" aria-hidden="true">+</span>';
+  return '<div class="pz-side '+side+(ed?' ed':'')+'" data-row="'+r.id+'" data-side="'+side+'" tabindex="-1">'+h+'</div>'; }
+function trkHTML(r){ var t=r.trk, ed=edit&&edit.row===r.id&&edit.side==='t', c='pz-trk', h, on=sel&&sel.row===r.id;
+  if(ed) h='<input class="pz-in" autocomplete="off" spellcheck="false" placeholder="φορτηγό ή συνεργάτης" aria-label="Φορτηγό ή συνεργάτης">';
+  else if(r.draft.t){ c+=' none'; h='<span class="pz-draft">'+esc(r.draft.t)+'</span>'; }
+  else if(!t){ c+=' none'; h='<b>φορτηγό;</b>'; }
+  else if(t.t==='own') h='<b>'+TR[t.i][0]+'</b><span>'+(on?TR[t.i][1]+' · ':'')+TR[t.i][2]+'</span>';
+  else { c+=' par'; h='<b>'+PT[t.i][0]+'</b><span>'+(on?PT[t.i][1]+' · ':'')+PT[t.i][2]+' €</span>'; }
+  return '<div class="'+c+'" data-row="'+r.id+'" data-side="t" tabindex="-1">'+h+'</div>'; }
+// «22 Άργος 6814», «7 9214», «-6999», «17 Κασάπης Πάτρα 850»: pallets first, 4 digits or «-» = the reference, words = place or client
+function parse(v,refs){ var o={q:null,ref:'',price:0,words:[]};
+  v.replace(/[,+]/g,' ').split(/\s+/).filter(Boolean).forEach(function(t,i){ t=t.replace(/€$/,''); if(!t) return;
+    if(/^-\d{2,4}$/.test(t)) o.ref=t.slice(1); else if(/^\d{4}$/.test(t)) o.ref=t;
+    else if(/^\d{1,2}$/.test(t)&&o.q==null&&!o.words.length&&!o.ref) o.q=+t;
+    else if(/^\d{3}$/.test(t)){ if(refs.some(function(r){return r.slice(-3)===t})) o.ref=t; else o.price=+t; }
+    else if(/^\d+$/.test(t)) o.price=+t; else o.words.push(t); });
+  return o; }
+function sources(r,side){ var out=[];
+  rows.forEach(function(x){ if(x.trk||x.id===r.id) return; x[side].forEach(function(pc,i){ if(pc.ref) out.push({t:'row',row:x.id,i:i,pc:pc,day:x.day}); }); });
+  store.forEach(function(x){ if(x.d===side) out.push({t:'store',id:x.id,pc:x}); });
+  return out; }
+function options(){ var r=byId(edit.row), v=edit.v.trim(), out=[]; if(!v) return out;
+  if(edit.side==='t'){ var q=norm(v);
+    TR.forEach(function(t,i){ if(norm(t[0]+' '+t[2]).indexOf(q)>=0){
+      var twin=rows.filter(function(x){return x.id!==r.id&&x.day===r.day&&x.trk&&x.trk.t==='own'&&x.trk.i===i})[0];
+      out.push({k:'own',i:i,twin:twin?twin.id:0}); } });
+    PT.forEach(function(t,i){ if(norm(t[0]).indexOf(q)>=0) out.push({k:'par',i:i}); });
+    return out.length?out.slice(0,3):[{k:'none',txt:v}]; }
+  var src=sources(r,edit.side), o=parse(v,src.map(function(x){return x.pc.ref})), base=sum(r[edit.side]);
+  if(!o.ref&&!o.words.length) return out;
+  src.forEach(function(x){ var pc=x.pc;
+    if(o.ref&&pc.ref.slice(-o.ref.length)!==o.ref) return;
+    if(o.words.some(function(w){return norm(pc.place+' '+pc.cl).indexOf(norm(w))<0})) return;
+    var q=Math.min(o.q||pc.q,pc.q); out.push({k:'take',src:x,q:q,after:base+q,short:o.q>pc.q?pc.q:0,far:x.day&&x.day!==r.day?x.day:''}); });
+  if(out.length) return out.slice(0,3);
+  if(o.ref){ var near=src.filter(function(x){return x.pc.ref.slice(-o.ref.length)===o.ref})[0];
+    return [{k:'none',txt:'-'+o.ref,why:near?'-'+near.pc.ref+' είναι '+near.pc.place:''}]; }
+  if(o.words.length>=2) return [{k:'new',q:o.q,place:o.words[o.words.length-1],cl:o.words.slice(0,-1).join(' '),price:o.price,after:base+(o.q||0)}];
+  return [{k:'none',txt:o.words.join(' ')}]; }
+function fit(n,on){ if(!on) return ''; return n===CAP?'<u>γεμίζει</u>':n>CAP?'<u class="w">'+(n-CAP)+' πάνω</u>':'<u>χωρούν '+(CAP-n)+'</u>'; }
+function popHTML(){ var ops=options(); edit.ops=ops; if(!ops.length) return '';
+  if(edit.sel>=ops.length) edit.sel=0;
+  return '<div class="pz-pop '+edit.side+'" role="listbox">'+ops.map(function(x,i){ var h, on=i===edit.sel;
+    if(x.k==='none') return '<div class="pz-op none">'+(x.why?esc(x.why):'δεν βρέθηκε «'+esc(x.txt)+'»')+'</div>';
+    if(x.k==='own') h='<b>'+TR[x.i][0]+'</b><i>'+TR[x.i][1]+' · '+TR[x.i][2]+'</i>'+(x.twin&&on?'<u>στη γραμμή του</u>':'');
+    else if(x.k==='par') h='<b>'+PT[x.i][0]+'</b><i>'+PT[x.i][1]+' · '+PT[x.i][2]+' €</i>';
+    else if(x.k==='take'){ var pc=x.src.pc;
+      h='<b>'+x.q+'</b> '+esc(pc.place)+'<i>-'+pc.ref+' · '+esc(pc.cl)+(pc.intl?' · διεθνής':'')+'</i>'
+       +(x.far?'<i>από '+DL[x.far]+'</i>':'')+(x.q<pc.q?'<i>μένουν '+(pc.q-x.q)+'</i>':'')+(x.short?'<u class="w">έχει μόνο '+x.short+'</u>':fit(x.after,on)); }
+    else h='<i>νέα</i> '+(x.q?'<b>'+x.q+'</b> ':'')+esc(x.place)+'<i>'+esc(x.cl)+(x.price?' · '+x.price+' €':'')+'</i>'+(x.q?fit(x.after,on):'');
+    return '<div class="pz-op'+(on?' on':'')+'" role="option" data-op="'+i+'">'+h+'</div>'; }).join('')+'</div>'; }
+function rowHTML(r){ var c='pz-row'+(PAST[r.day]?' done':'')+(sel&&sel.row===r.id?' sel':'');
+  return '<div class="'+c+'" data-id="'+r.id+'">'+sideHTML(r,'k')+capHTML(r,'k')+trkHTML(r)+capHTML(r,'a')+sideHTML(r,'a')
+   +(edit&&edit.row===r.id?popHTML():'')+'</div>'; }
+function needs(){ var live=rows.filter(function(r){return !PAST[r.day]});
+  return {un:rows.filter(function(r){return !r.trk&&(r.k.length||r.a.length)}), over:live.filter(function(r){return r.trk&&(sum(r.k)>CAP||sum(r.a)>CAP)}),
+   gap:live.filter(function(r){return SOON[r.day]&&r.trk&&r.trk.t==='own'&&!r.a.length&&!r.draft.a}),
+   door:sum(store.filter(function(x){return x.d==='k'}))}; }
+function nowHTML(){ var x=needs(), h='';
+  if(x.un.length) h+='<button class="pz-chip red" data-go="'+x.un[0].id+'"><b>'+x.un.length+'</b>χωρίς φορτηγό</button>';
+  if(x.gap.length) h+='<button class="pz-chip" data-go="'+x.gap[0].id+'"><b>'+x.gap.length+'</b>άδεια γυρίσματα</button>';
+  if(x.over.length) h+='<button class="pz-chip" data-go="'+x.over[0].id+'"><b>'+x.over.length+'</b>πάνω από '+CAP+'</button>';
+  if(!h) h='<span class="pz-calm">Όλα έχουν φορτηγό.</span>';
+  return '<span class="l">Σε θέλουν</span>'+h+'<button class="pz-chip door'+(x.door?'':' calm')+'">Μοίρασμα'+(x.door?' · <b>'+x.door+'</b>μένουν':'')+'</button>'; }
+function render(){ var h='';
+  DAYS.forEach(function(d){ var rs=rows.filter(function(r){return r.day===d[0]});
+    if(onlyToday){ if(d[0]!==TODAY) rs=rs.filter(function(r){return !r.trk&&!PAST[r.day]}); if(!rs.length) return; }
+    rs.sort(function(a,b){return (a.trk?1:0)-(b.trk?1:0)});
+    h+='<section class="pz-day'+(d[0]===TODAY?' today':'')+'"><div class="pz-dl">'+d[1]+' '+d[2]
+      +(d[3]?'<small>'+d[3]+'</small>':d[0]===TODAY?'<small>σήμερα</small>':'')+'</div><div class="pz-rows">'+rs.map(rowHTML).join('')
+      +'<div class="pz-row ghost"><span></span><span></span><div class="pz-trk new" data-new="'+d[0]+'" tabindex="-1"><b>νέα γραμμή</b></div></div></div></section>'; });
+  root.querySelector('[data-board]').innerHTML=h; root.querySelector('[data-now]').innerHTML=nowHTML();
+  if(edit){ var i=root.querySelector('.pz-in'); if(i){ i.value=edit.v; i.focus(); i.setSelectionRange(i.value.length,i.value.length); } place(); }
+  fresh=null; }
+function place(){ var i=root.querySelector('.pz-in'), pp=root.querySelector('.pz-pop'); if(!i||!pp) return;
+  var a=i.getBoundingClientRect(), b=pp.parentNode.getBoundingClientRect();
+  if(edit.side==='k'){ pp.style.left='auto'; pp.style.right=Math.max(8,b.right-a.right-6)+'px'; }
+  else if(edit.side==='t'){ pp.style.right='auto'; pp.style.left=Math.max(8,(b.width-pp.offsetWidth)/2)+'px'; }
+  else { pp.style.right='auto'; pp.style.left=Math.max(8,Math.min(a.left-b.left-6,b.width-pp.offsetWidth-8))+'px'; }
+  var sc=root.querySelector('[data-scroll]').getBoundingClientRect(), up=a.bottom+pp.offsetHeight+12>sc.bottom;
+  pp.style.top=(up?a.top-b.top-pp.offsetHeight-7:a.bottom-b.top+7)+'px'; pp.style.transformOrigin=up?'bottom left':'top left'; }
+function keep(){ if(edit){ var r=byId(edit.row); if(r) r.draft[edit.side]=edit.v.trim(); } }
+function start(row,side){ var r=byId(row); if(!r) return; keep(); var v=r.draft[side]||''; r.draft[side]='';
+  sel={row:row,side:side}; edit={row:row,side:side,v:v,sel:0}; prune(); render(); }
+function stop(){ keep(); var nw=edit&&edit.nw, id=edit&&edit.row; edit=null; prune(); if(nw&&!byId(id)) undoStack.pop(); render(); }
+function newLine(day){ keep(); edit=null; snap(); var r=R(day,null,'',''); rows.push(r); start(r.id,'t'); edit.nw=true; }
+function commit(){ var r=byId(edit.row), x=(edit.ops||[])[edit.sel]; if(!x){ if(!edit.v.trim()) stop(); return; }
+  if(x.k==='none'||x.short) return;
+  snap();
+  if(x.k==='own'||x.k==='par'){ r.trk={t:x.k,i:x.i};
+    if(x.twin){ var t=byId(x.twin); ['k','a'].forEach(function(s){ t[s]=t[s].concat(r[s]); if(r.draft[s]) t.draft[s]=r.draft[s]; });
+      rows=rows.filter(function(y){return y.id!==r.id}); changed(t.id,r.a.length?'a':'k'); sel={row:t.id,side:'t'}; edit=null; render(); return; }
+    changed(r.id,'a'); sel={row:r.id,side:'a'}; edit={row:r.id,side:r.k.length&&!r.a.length?'a':'k',v:'',sel:0};
+    if(r.k.length||r.a.length) edit=null; render(); return; }
+  if(x.k==='take'){ var pc=x.src.pc, whole=pc.of||pc.q0||pc.q, part=x.q<pc.q||pc.of;
+    r[edit.side].push({q:x.q,place:pc.place,ref:pc.ref,cl:pc.cl,of:part?whole:0,home:x.src.day||'',far:x.far||''});
+    pc.q-=x.q; if(x.src.t==='row'){ var sr=byId(x.src.row); if(pc.q<=0) sr[edit.side].splice(x.src.i,1); else pc.of=whole; }
+    else if(pc.q<=0) store=store.filter(function(y){return y.id!==pc.id}); }
+  else r[edit.side].push({q:x.q,place:x.place,ref:'',cl:x.cl,of:0,price:x.price||0});
+  fresh={row:r.id,side:edit.side}; changed(r.id,edit.side); edit.v=''; edit.sel=0; prune(); render(); }
+// nothing is ever deleted: a piece taken off a truck becomes a line without a truck in the same day
+function back(){ var r=byId(edit.row), a=r[edit.side]; if(!a.length) return; snap(); var x=a.pop();
+  var hd=x.home||r.day; delete x.home;
+  var home=rows.filter(function(y){return !y.trk&&y.day===hd&&y.id!==r.id&&y[edit.side].some(function(z){return x.ref&&z.ref===x.ref})})[0];
+  if(home){ var z=home[edit.side].filter(function(z){return z.ref===x.ref})[0]; z.q+=x.q; if(z.of&&z.q>=z.of) z.of=0; }
+  else if(r.trk){ var w=R(hd,null,'',''); w[edit.side].push(x); rows.push(w); }
+  else { a.push(x); undoStack.pop(); return; }
+  changed(r.id,edit.side); render(); }
+root.addEventListener('mousedown',function(e){ active=true; e.pzMine=true;
+  var op=e.target.closest('[data-op]'); if(op){ e.preventDefault(); edit.sel=+op.dataset.op; commit(); return; }
+  if(e.target.closest('[data-undo]')){ e.preventDefault(); undo(); return; }
+  var nw=e.target.closest('[data-new]'); if(nw){ e.preventDefault(); newLine(nw.dataset.new); return; }
+  var go=e.target.closest('[data-go]'); if(go){ var id=+go.dataset.go; keep(); edit=null; sel={row:id,side:byId(id).trk?'a':'t'}; render();
+    var el=root.querySelector('[data-id="'+id+'"]'); if(el) el.scrollIntoView({block:'nearest',behavior:'smooth'}); return; }
+  if(e.target.closest('.pz-in')) return;
+  var c=e.target.closest('[data-side]'); if(c){ e.preventDefault(); start(+c.dataset.row,c.dataset.side); return; }
+  if(edit&&!e.target.closest('.pz-pop')) stop(); });
+document.addEventListener('mousedown',function(e){ if(!e.pzMine){ active=false; if(edit) stop(); } });
+root.addEventListener('input',function(e){ if(e.target.classList.contains('pz-in')&&edit){ edit.v=e.target.value; edit.sel=0;
+    var row=root.querySelector('[data-id="'+edit.row+'"]'), old=row.querySelector('.pz-pop'); if(old) old.remove();
+    row.insertAdjacentHTML('beforeend',popHTML()); place(); }
+  if(e.target.hasAttribute('data-find')){ var q=norm(e.target.value); if(!q) return;
+    var hit=rows.filter(function(r){ if(!r.trk) return false; var t=r.trk.t==='own'?TR[r.trk.i]:PT[r.trk.i];
+      return !PAST[r.day]&&norm(t.join(' ')).indexOf(q)>=0; })[0];
+    if(hit){ sel={row:hit.id,side:'a'}; render(); e.target.focus();
+      var el=root.querySelector('[data-id="'+hit.id+'"]'); if(el) el.scrollIntoView({block:'nearest',behavior:'smooth'}); } } });
+function move(dy){ var vis=[].map.call(root.querySelectorAll('.pz-row[data-id]'),function(x){return +x.dataset.id});
+  if(!vis.length) return; var i=sel?vis.indexOf(sel.row):vis.indexOf((rows.filter(function(r){return r.day===TODAY})[0]||{}).id)-dy;
+  i=Math.max(0,Math.min(vis.length-1,i+dy)); sel={row:vis[i],side:sel?sel.side:'a'}; render();
+  var el=root.querySelector('[data-id="'+vis[i]+'"]'); if(el) el.scrollIntoView({block:'nearest'}); }
+document.addEventListener('keydown',function(e){ var T=e.target, inMine=root.contains(T);
+  if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='z'&&(active||inMine)&&!(edit&&edit.v)){ e.preventDefault(); undo(); return; }
+  if(edit&&T.classList&&T.classList.contains('pz-in')){ var ops=(edit.ops||[]).filter(function(x){return x.k!=='none'});
+    if(e.key==='ArrowDown'&&ops.length){ e.preventDefault(); edit.sel=(edit.sel+1)%ops.length; render(); }
+    else if(e.key==='ArrowUp'&&ops.length){ e.preventDefault(); edit.sel=(edit.sel-1+ops.length)%ops.length; render(); }
+    else if(e.key==='Enter'||(edit.side!=='t'&&(e.key===','||e.key==='+')&&edit.v.trim())){ e.preventDefault(); commit(); }
+    else if(e.key==='Escape'){ e.preventDefault(); if(edit.v){ edit.v=''; render(); } else stop(); }
+    else if(e.key==='Backspace'&&!edit.v&&edit.side!=='t'){ e.preventDefault(); if(!e.repeat) back(); }
+    else if(e.key==='Tab'){ e.preventDefault(); var od=['k','t','a'], j=od.indexOf(edit.side)+(e.shiftKey?-1:1);
+      if(j>=0&&j<3) start(edit.row,od[j]); else stop(); }
+    return; }
+  if(T.hasAttribute&&T.hasAttribute('data-find')){ if(e.key==='Escape'||e.key==='Enter') T.blur(); return; }
+  if(!active||/INPUT|TEXTAREA|SELECT/.test(T.tagName)||e.metaKey||e.ctrlKey||e.altKey) return;
+  if(e.key==='ArrowDown'){ e.preventDefault(); move(1); } else if(e.key==='ArrowUp'){ e.preventDefault(); move(-1); }
+  else if((e.key==='ArrowLeft'||e.key==='ArrowRight')&&sel){ e.preventDefault(); var o2=['k','t','a'], j2=o2.indexOf(sel.side)+(e.key==='ArrowLeft'?-1:1);
+    sel.side=o2[Math.max(0,Math.min(2,j2))]; render(); }
+  else if(e.key==='Enter'&&sel){ e.preventDefault(); start(sel.row,sel.side); }
+  else if(e.key==='n'||e.key==='N'||e.key==='ν'||e.key==='Ν'){ e.preventDefault(); newLine(sel?byId(sel.row).day:TODAY); }
+  else if(e.key==='/'){ e.preventDefault(); root.querySelector('[data-find]').focus(); }
+  else if(e.key==='Escape'&&sel){ sel=null; render(); } });
+root.querySelector('[data-today]').addEventListener('click',function(e){ onlyToday=!onlyToday; e.currentTarget.setAttribute('aria-pressed',onlyToday); render(); });
+var first=JSON.stringify({rows:rows,store:store,n:n});
+root.querySelector('[data-reset]').addEventListener('click',function(){ undoStack=[first]; undo(); });
+window.__pz={state:function(){return {rows:rows,store:store}}};
+render();
+var sc=root.querySelector('[data-scroll]'), td=root.querySelector('.pz-day.today'); if(sc&&td) sc.scrollTop=Math.max(0,td.offsetTop-sc.offsetTop-150);
+})();
+</script>
+</body></html>
