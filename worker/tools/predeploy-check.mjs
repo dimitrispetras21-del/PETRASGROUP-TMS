@@ -3,21 +3,23 @@
 // (wrangler.toml [build] command; ValueDriven 26/11/2026). Rule 2 of «Τρεις κανόνες μίας πηγής», checked by the tool
 // instead of by memory. It stops the upload when:
 //   1. this branch does not contain origin/main. A Worker built from an older branch removes what main already has
-//      live (e.g. POST /changes, #346), and no user sees an error: the pages just stop refreshing.
+//      live (e.g. POST /changes, #346), and no user sees an error: the pages just stop refreshing. It compares with
+//      main, not with the live Worker: between a «Worker first, merge after» deploy and its merge, live is ahead of
+//      main and this check cannot see it (rule 1: sync main right after the deploy).
 //   2. worker-guard fails on the source, with the flags in worker/guard-flags.txt (the one place they are kept).
 // `wrangler dev` and `wrangler types` run the build command too: skipped. `wrangler rollback` never runs it.
 // Emergency only: PETRAS_SKIP_PREDEPLOY=1 npx wrangler deploy (nothing is checked, a warning says so).
 // --guard-only runs check 2 alone (CI: worker/test/guard-flags.test.mjs, where the branch check has no meaning).
 // Exit 0 = the upload goes on, 1 = stop (wrangler aborts before uploading anything).
 import { execFileSync, spawnSync } from 'node:child_process';
-import { readFileSync, writeFileSync, mkdtempSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const WORKER = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const UPLOADS = ['deploy', 'versions upload'];
-const command = process.env.WRANGLER_COMMAND;   // set by wrangler 4.149+; unset (older wrangler) counts as a deploy
+const command = process.env.WRANGLER_COMMAND;   // set by wrangler (4.107 to 4.168 checked); unset counts as a deploy
 const guardOnly = process.argv.includes('--guard-only');
 
 function stop(message) {
@@ -63,8 +65,10 @@ const entry = path.join(WORKER, 'src', 'index.js');
 const source = readFileSync(entry, 'utf8');
 const imported = [...source.matchAll(/^import .* from "(\.{1,2}\/[^"]+)";$/gm)]
   .map((m) => readFileSync(path.join(path.dirname(entry), m[1]), 'utf8'));
-const bundle = path.join(mkdtempSync(path.join(tmpdir(), 'predeploy-')), 'bundle.js');
+const tmp = mkdtempSync(path.join(tmpdir(), 'predeploy-'));
+const bundle = path.join(tmp, 'bundle.js');
 writeFileSync(bundle, [source, ...imported].join('\n'));
 const guard = spawnSync(process.execPath, [path.join(WORKER, 'tools', 'worker-guard.mjs'), bundle, ...flagLines[0].split(/\s+/)], { stdio: 'inherit' });
+rmSync(tmp, { recursive: true, force: true });
 if (guard.status !== 0) stop(`worker-guard said STOP (exit ${guard.status}); its lines are above.`);
 console.log('predeploy: OK, wrangler goes on with the upload');
