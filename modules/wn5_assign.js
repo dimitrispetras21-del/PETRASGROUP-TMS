@@ -77,6 +77,8 @@
       if (!list.length) { st.err = k.clientErr('piece_missing', 'Η παράδοση δεν είναι πια στον πίνακα — ανανέωσε'); return st; }
       st.items = k.copy(list);
       st.group = src.group ? k.copy(src.group) : null;
+      // 114: an order with a split part goes as its other pieces ({pieces}); band names the order for the F42 band only
+      st.band = src.band ? k.copy(src.band) : null;
       st.pieces = src.pieces ? k.copy(src.pieces) : null;
       st.day = st.day || st.items[0].nat_ready_day || null;
       if (!ctx.side) st.side = k.sideFor(st.items[0]);
@@ -609,7 +611,8 @@
     // F42: a VS with several deliveries goes whole; the box sends the pressed piece alone. Entry test 25/11 (finding 5):
     // «μόνο αυτές οι παλέτες» read as a quantity — it is one point of the VS, so it says the point, and unticked it names
     // the points that come along
-    if (st.mode === 'legs' && st.group && st.group.order_id != null && st.items.length > 1 && st.focus) {
+    const grp = st.group || st.band;
+    if (st.mode === 'legs' && grp && grp.order_id != null && st.items.length > 1 && st.focus) {
       const ptOf = (it) => { const n = k.needs(it, false, k.hubId()).find((x) => !x.hub && x.loc != null); return (n ? _place(n.loc) : '—') + ' ' + WN5L.palText(it.pallets, it.pallets == null ? 1 : 0) + 'π'; };
       const me = st.items.find((x) => x.piece_id === st.focus);
       const others = st.items.filter((x) => x.piece_id !== st.focus);

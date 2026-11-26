@@ -10128,6 +10128,12 @@ body.wn5-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px
   color:var(--accent-hover); cursor:pointer; opacity:0; }
 .wn5-row:hover .wn5-cpy, .wn5-cpy:focus-visible, .wn5-cpy:has(> .wn5-cpy-tip) { opacity:1; }
 .wn5-cpy:hover { color:var(--wi4-ink); }
+/* 114 (owner 8/11, 25/11): «⋯» of a waiting row whose load can split at its loading point, beside «ΠΡΟΣ ΑΝΑΘΕΣΗ» */
+.wn5-row > .wn5-asg > .wn5-wmore { flex:none; width:22px; padding:0; border:0; border-radius:4px; background:none; color:var(--wi4-grey-2);
+  font-size:13px; font-weight:700; letter-spacing:1px; line-height:1; cursor:pointer; }
+.wn5-row > .wn5-asg > .wn5-wmore:hover, .wn5-row > .wn5-asg > .wn5-wmore:focus-visible { background:var(--wi4-hover); color:var(--wi4-ink); }
+.wn5-part-n { width:64px; }
+.wn5-asg:has(> .wn5-wmore) > .wn5-indraft { right:30px; }
 .wn5-cpy-tip { position:absolute; left:-26px; bottom:calc(100% + 6px); z-index:5; height:20px; padding:0 8px; display:flex; align-items:center;
   box-sizing:border-box; border-radius:4px; background:var(--wi4-ink); font-size:11px; font-weight:400; color:var(--surface-card); white-space:nowrap; pointer-events:none; }
 /* 072b segment tiles (Figma H1 2120:7738, H3 2123:7735, Ε5 2140:7810; colours 2140:7735). The line / slanted side keeps
