@@ -69,6 +69,10 @@ SUPABASE_URL = "https://gatejgbpyodlepkvqkgf.supabase.co"
 # deploy unless it is copied here too.
 PRESENCE_OFF = "0"
 PRESENCE_MS = "5000"
+# CHANGES_OFF = "1" stops every open tab asking POST /changes (410 {stop:true}; T188, the re-read of a page when
+# someone else changed what it shows); any other value keeps it on. Declared here: a dashboard-only var is erased
+# by the next deploy.
+CHANGES_OFF = "0"
 
 # Secrets (ΔΕΝ γράφονται εδώ — ζουν στο Cloudflare και επιβιώνουν των deploys):
 #   JWT_SECRET

@@ -8043,6 +8043,64 @@ async function handlePresence(request, origin, env) {
   return jsonOk({ others: out.others, changes: out.changes ?? null, now: new Date(nowMs).toISOString(), next_ms: nextMs }, origin, env);
 }
 __name(handlePresence, "handlePresence");
+// src/routes/changes.js — POST /changes: «did someone else change something since this tab last looked» (T188, ValueDriven 26/11).
+// The owner (call 9/11): another user does not see a new or changed order until they refresh. The browser asks every
+// 30 s while the tab is visible (core/fresh-on-return.js) and draws its page again when a table that page shows was
+// changed by SOMEONE ELSE. Only table names and counts travel: no record, no value, no name, so every role may ask
+// (the same five as presence, an explicit list, not PERMISSIONS: a future role is born without it, principle 5).
+// The cursor is audit_log.id (one index, no clock), and one answer covers at most CHANGES_MAX_ROWS rows: `more` says
+// the tab should ask again at once. Rows that are not a person's (triggers, migrations, cron, role 'system') follow a
+// person's change or none, and the caller's own saves never count (same rule as presence, 068 §4). Known limit: a row
+// committed after a later id was already read is not seen; the next return to the tab re-reads the page anyway.
+// The owner's lever: CHANGES_OFF = "1" in wrangler.toml [vars] → 410 {stop:true}, every tab stops asking.
+// POST with {since} in the body, not GET ?since=: one constant URL, so the browser's CORS preflight is cached (Max-Age)
+// instead of one OPTIONS per ask, which would double the requests (review 26/11).
+var CHANGES_ROLES = ["owner", "management", "accountant", "dispatcher", "warehouse"];
+var CHANGES_MAX_ROWS = 500;
+async function handleChanges(request, origin, env) {
+  if (env.CHANGES_OFF === "1") return jsonOk({ stop: true }, origin, env, 410);
+  const caller = await getCaller(request, env);
+  if (!caller) return jsonError("Unauthorized", 401, origin, env);
+  if (!CHANGES_ROLES.includes(caller.role)) return jsonError("Forbidden", 403, origin, env);
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return jsonError("Invalid request", 400, origin, env);
+  }
+  if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).some((k) => k !== "since")) {
+    return jsonError("Invalid request: body must be {since}", 400, origin, env);
+  }
+  const since = body.since === void 0 ? null : body.since;
+  if (since !== null && !(Number.isSafeInteger(since) && since >= 0)) return jsonError("Invalid request: bad since", 400, origin, env);
+  try {
+    if (since === null) {
+      // the first ask of a tab: where the log is now, nothing to report yet
+      const { rows: top } = await dbSelectRaw(env, "audit_log", new URLSearchParams({ select: "id", order: "id.desc", limit: "1" }));
+      return jsonOk({ latest: top.length ? Number(top[0].id) : 0, tables: {}, n: 0, more: false }, origin, env);
+    }
+    const p = new URLSearchParams({ select: "id,table_name,actor,role", id: `gt.${since}`, order: "id.asc", limit: String(CHANGES_MAX_ROWS + 1) });
+    const { rows } = await dbSelectRaw(env, "audit_log", p);
+    if (!Array.isArray(rows)) throw new Error("audit_log answer is not a list");
+    const more = rows.length > CHANGES_MAX_ROWS;
+    const seen = more ? rows.slice(0, CHANGES_MAX_ROWS) : rows;
+    const tables = {};
+    let n = 0;
+    for (const r of seen) {
+      const actor = typeof r.actor === "string" ? r.actor : "";
+      if (actor === caller.sub || !CHANGES_ROLES.includes(r.role) || actor.startsWith("trigger:") || actor.startsWith("migration:")) continue;
+      tables[r.table_name] = (tables[r.table_name] || 0) + 1;
+      n++;
+    }
+    const latest = seen.length ? Number(seen[seen.length - 1].id) : Number(since);
+    return jsonOk({ latest, tables, n, more }, origin, env);
+  } catch (e) {
+    // unknown is never «nothing changed» (principle 1): the tab keeps its page and asks again later
+    console.error("CHANGES read failed", e.message);
+    return jsonError("changes unavailable", 503, origin, env);
+  }
+}
+__name(handleChanges, "handleChanges");
 var FACADE_PATH = /^\/v0\/[^/]+\/([^/]+)(?:\/([^/]+))?\/?$/;
 var ORDERS_TABLE_ID = "tblgHlNmLBH3JTdIM";
 var index_default = {
@@ -8103,6 +8161,9 @@ var index_default = {
     }
     if (url.pathname === "/presence" && request.method === "POST") {
       return handlePresence(request, origin, env);
+    }
+    if (url.pathname === "/changes" && request.method === "POST") {
+      return handleChanges(request, origin, env);
     }
     const facadeMatch = url.pathname.match(FACADE_PATH);
     if (facadeMatch) {

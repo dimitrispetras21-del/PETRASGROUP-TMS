@@ -7,7 +7,7 @@
 //   - Offline banner via postMessage to all clients
 // ═══════════════════════════════════════════════════════════
 
-const SW_VERSION = '1795690000';
+const SW_VERSION = '1795700000';
 
 // Το vendor/leaflet/* ΔΕΝ μπαίνει στο APP_SHELL επίτηδες: το pre-cache στο
 // install θα κατέβαζε 228 KB σε κάθε χρήστη, ακυρώνοντας το lazy loading της
@@ -30,6 +30,8 @@ const APP_SHELL = [
   // F36: app.html loads both on every page; the login window and the reload that waits for open forms.
   '/PETRASGROUP-TMS/core/relogin.js',
   '/PETRASGROUP-TMS/core/sw-update.js',
+  // T188: app.html loads it on every page; the re-read on a return to the tab.
+  '/PETRASGROUP-TMS/core/fresh-on-return.js',
   '/PETRASGROUP-TMS/core/auth.js',
   '/PETRASGROUP-TMS/core/router.js',
   '/PETRASGROUP-TMS/core/utils.js',
