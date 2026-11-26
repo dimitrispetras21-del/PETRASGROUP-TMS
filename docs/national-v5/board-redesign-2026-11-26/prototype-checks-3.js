@@ -1,0 +1,10 @@
+const { chromium } = require('playwright'); const path = require('path');
+(async () => { const b = await chromium.launch(); const p = await b.newPage({ viewport: { width: 1440, height: 900 } });
+  await p.goto('file://' + path.resolve(process.argv[2])); await p.waitForTimeout(900);
+  const door = async () => (await p.locator('.pz-chip.door').innerText()).replace(/\D/g, ''); const d0 = await door();
+  const n0 = await p.evaluate(() => window.__pz.state().rows.length);
+  await p.locator('.pz-day.today .pz-row', { hasText: 'HMA 4102' }).locator('.pz-side.k').click(); await p.keyboard.type('7003'); await p.keyboard.press('Enter'); await p.waitForTimeout(150);
+  const d1 = await door(); await p.keyboard.press('Backspace'); await p.waitForTimeout(150);
+  const n1 = await p.evaluate(() => window.__pz.state().rows.length);
+  console.log((d1 === String(+d0 - 11) && await door() === d0 && n1 === n0 ? 'PASS' : 'FAIL') + ' a Moirasma piece goes back to Moirasma: ' + d0 + ' → ' + d1 + ' → ' + await door());
+  await b.close(); })();
