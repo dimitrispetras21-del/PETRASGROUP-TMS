@@ -3700,6 +3700,7 @@ SCN.truth = async (browser, origin) => {
     const hd = document.querySelector('#content .wn5 .wn5-q .wi4-q-hd > span');
     const hub = document.querySelector('#content .wn5 .wn5-hub-s');
     return { week: (document.querySelector('#content .wn5') || {}).dataset.week, days, q: hd ? hd.textContent.replace(/\s+/g, ' ').trim() : null,
+      old: Number((document.querySelector('#content .wn5 .wn5-q button.wn5-q-old') || { dataset: {} }).dataset.qOld || 0),
       cards: document.querySelectorAll('#content .wn5 .wn5-qcard').length, hub: hub ? hub.textContent.replace(/\s+/g, ' ').trim() : null };
   });
   const go = async (n, sat) => { await page.evaluate((w) => WN5._week(w), n); return until(page, (d) => { const r = document.querySelector('#content .wn5'); return r && r.dataset.week === d && r.dataset.state === 'ok'; }, sat); };
@@ -3710,13 +3711,14 @@ SCN.truth = async (browser, origin) => {
   ok(scn, '1a W42 (current): the load of Mon 5/10 is carried to Sat 10/10, the one of Wed 14/10 stands on its day, the one of Mon 19/10 is not here',
     JSON.stringify(w42.days['2026-10-10']) === '[9101]' && JSON.stringify(w42.days['2026-10-14']) === '[9102]' && !all(w42).includes(9103), w42.days);
   // 087 (owner answer 1, #167): a VS waiting for its national truck is in ONE place, «ΠΡΟΣ ΑΝΑΘΕΣΗ» — never on the shelf too
-  ok(scn, '1b W42: ΕΠΟΜΕΝΑ · 2, the two loads the week shows; no shelf for them (087: one place)', /ΕΠΟΜΕΝΑ · 2$/.test(w42.q || '') && !w42.hub, { q: w42.q, hub: w42.hub });
+  // owner 25/11 (item D): «ΕΠΟΜΕΝΑ · N» counts the week's own; the load carried from Mon 5/10 is «παλιά αιτήματα · 1» beside it
+  ok(scn, '1b W42: ΕΠΟΜΕΝΑ · 1 + «παλιά αιτήματα · 1», the two loads the week shows; no shelf for them (087: one place) — main: ΕΠΟΜΕΝΑ · 2', /ΕΠΟΜΕΝΑ · 1$/.test(w42.q || '') && w42.old === 1 && !w42.hub, { q: w42.q, old: w42.old, hub: w42.hub });
   // ── a later week W44: the base still sends all three; none of them is a load of W44
   const at44 = await go(44, '2026-10-24');
   const w44 = await look();
   ok(scn, '1a W44 (later week): no load of another week anywhere; the one ready Mon 26/10 that loads Tue 20/10 (in no earlier board) stands on Sat 24/10, never on no day — main: all four on Sat 24/10',
     at44 && JSON.stringify(w44.days['2026-10-24']) === '[9104]' && all(w44).length === 1, w44.days);
-  ok(scn, '1b W44: ΕΠΟΜΕΝΑ · 1, no shelf (087)', at44 && /ΕΠΟΜΕΝΑ · 1$/.test(w44.q || '') && !w44.hub, { q: w44.q, hub: w44.hub });
+  ok(scn, '1b W44: ΕΠΟΜΕΝΑ · κανένα + «παλιά αιτήματα · 1» (it loads Tue 20/10, before the week), no shelf (087) — main: ΕΠΟΜΕΝΑ · 1', at44 && /ΕΠΟΜΕΝΑ · κανένα$/.test(w44.q || '') && w44.old === 1 && !w44.hub, { q: w44.q, old: w44.old, hub: w44.hub });
   // ── W43: only the load of Mon 19/10, on Mon 19/10
   const at43 = await go(43, '2026-10-17');
   const w43 = await look();

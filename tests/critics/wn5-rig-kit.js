@@ -233,7 +233,7 @@ async function openApp(browser, origin, opts = {}) {
     }
     S.facade.push({ m, path: u.pathname });
     let ans = m === 'GET' ? { records: [] } : { ok: true };
-    if (m === 'GET' && tid === 'tblxu8DRfTQOFRCzS') ans = { records: FACADE_LOCS };
+    if (m === 'GET' && tid === 'tblxu8DRfTQOFRCzS') ans = { records: opts.facadeLocs || FACADE_LOCS };   // facadeLocs: with Latitude / Longitude (local pickups)
     if (m === 'GET' && tid === 'tblFWKAQVUzAM8mCE') ans = { records: FACADE_CLIENTS };
     return route.fulfill({ status: 200, contentType: 'application/json', headers: cors, body: JSON.stringify(ans) });
   });

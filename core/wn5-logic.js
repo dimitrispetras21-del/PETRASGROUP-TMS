@@ -22,6 +22,27 @@ const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 // Pallets of one trailer: the capacity of core/load-plan.js (owner 17/11), never a 33 of its own. The board (plan_board)
 // sends no pallet type, so every load counts as euro: 33, the base's over_33 warning (Ε-17). Display only.
 const CAP = (typeof LoadPlan !== 'undefined' ? LoadPlan : require('./load-plan.js')).capacity({});
+// Local pickups (owner 25/11, «Yes, by distance»): a VS export's loading point within 80 km of Veroia is picked up by
+// the local driver, never by a national truck, so its waiting row is a «Τοπική παραλαβή», not one more load «χωρίς
+// φορτηγό». Measured 25/11: the waiting VS export places of W47/W48 sit at 13–77 km or at 198 km and more, so 80 km
+// splits them with room either side. ONE rule for the board, ΕΠΟΜΕΝΑ and the «+» lists (localPlace), never a copy.
+const LOCAL_PICKUP_KM = 80;
+function kmBetween(a, b) {
+  const rad = (x) => (x * Math.PI) / 180;
+  const dLa = rad(b.lat - a.lat), dLo = rad(b.lon - a.lon);
+  const h = Math.sin(dLa / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLo / 2) ** 2;
+  return 2 * 6371 * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+const _coordOk = (c) => !!c && Number.isFinite(c.lat) && Number.isFinite(c.lon) && Math.abs(c.lat) <= 90 && Math.abs(c.lon) <= 180;
+// true = local, false = not, null = cannot tell (no catalogue of coordinates, or the place / the hub has none). A place
+// without coordinates is NOT local: it stays a load without a truck and the board says why (never a guessed distance).
+function localPlace(locId, coordOf, hubId) {
+  if (typeof coordOf !== 'function' || hubId == null || locId == null || locId === '') return null;
+  if (Number(locId) === Number(hubId)) return null;
+  const h = coordOf(Number(hubId)), p = coordOf(Number(locId));
+  if (!_coordOk(h) || !_coordOk(p)) return null;
+  return kmBetween(h, p) <= LOCAL_PICKUP_KM;
+}
 // Upper case is TYPED (the tonos trap of CSS text-transform).
 const DOW_HEAD = freeze(['ΚΥΡΙΑΚΗ', 'ΔΕΥΤΕΡΑ', 'ΤΡΙΤΗ', 'ΤΕΤΑΡΤΗ', 'ΠΕΜΠΤΗ', 'ΠΑΡΑΣΚΕΥΗ', 'ΣΑΒΒΑΤΟ']);
 const LISTS = freeze(['cycles', 'waiting', 'hub', 'notices']);
@@ -502,7 +523,7 @@ function _waitRow(list, hubId, errors, nameOf) {
     // P-11 (owner 28/10, answer 1): the pieces of this row that stand at Veroia — what «→ Βέροια» sends to the panel
     hubPieceIds: ws.filter((w) => w._atHub === true).map((w) => w.piece_id),
     group: w0.order_id != null ? { order_id: w0.order_id } : w0.nat_order_id != null ? { nat_order_id: w0.nat_order_id } : null,
-    vs: String(w0.kind || '').startsWith('vs_'), clients, refs, sortAt: delAt || w0.load_from, _parts: [...clients, ...refs],
+    vs: String(w0.kind || '').startsWith('vs_'), vsExport: anodos && ws.every((w) => w.kind === 'vs_export'), pickupLocal: false, old: false, clients, refs, sortAt: delAt || w0.load_from, _parts: [...clients, ...refs],
     // the first week whose board carries the row (072 plan_board: nat_ready_day ≤ the week's Friday; none = every week)
     readyDay: ws.some((w) => !DAY_RE.test(String(w.nat_ready_day || ''))) ? null : ws.map((w) => w.nat_ready_day).sort()[0],
   };
@@ -549,6 +570,20 @@ function model(board, opts) {
   for (const w of board.waiting) if (w.is_stock !== true) add(w, false);   // stock lives only in the Veroia board (owner rule 5, 19/10)
   for (const h of board.hub) if (_neverAssigned(h)) add(h, true);
   for (const list of groups.values()) rows.push(_waitRow(list, hubId, errors, nameOf));
+  // Local pickups (LOCAL_PICKUP_KM): a waiting VS export whose every loading point is within the distance. opts.coord
+  // (id → {lat, lon}) is the screen's catalogue of coordinates; without it no row is local (the screen says why). A
+  // point it cannot measure keeps the row a load without a truck, and the place is said once (principle 1).
+  const coord = typeof o.coord === 'function' ? o.coord : null;
+  const noCoord = new Set();
+  for (const r of rows) {
+    if (r.kind !== 'unassigned' || !r.vsExport || !coord) continue;
+    const pts = r.anod.from.filter((p) => p.locId != null);
+    const seen = pts.map((p) => localPlace(p.locId, coord, hubId));
+    seen.forEach((v, i) => { if (v === null) noCoord.add(pts[i].name && pts[i].name !== '—' ? pts[i].name : 'τόπος χωρίς όνομα'); });
+    r.pickupLocal = pts.length > 0 && seen.every((v) => v === true);
+  }
+  if (coord && hubId != null && noCoord.size && !_coordOk(coord(hubId))) errors.push('Η Βέροια δεν έχει συντεταγμένες — οι τοπικές παραλαβές μετριούνται ως ΠΡΟΣ ΑΝΑΘΕΣΗ');
+  else for (const n of noCoord) errors.push(`${n}: χωρίς συντεταγμένες — μετριέται ως ΠΡΟΣ ΑΝΑΘΕΣΗ, όχι ως τοπική παραλαβή`);
   rows.sort(rowOrder);
   const days = [];
   for (let i = 0; i < 7; i++) {
@@ -593,6 +628,10 @@ function model(board, opts) {
       r.carried = out;
       r.away = out ? { week: weekOf(r.dayKey), dir: r.dayKey < week ? 'from' : 'to' } : null;
     }
+    // an old request (owner 25/11): a load waiting since a day before this week, carried to its first day. The screen
+    // folds these into one line «παλιά αιτήματα · N» that opens in place: never hidden (owner 15/11, some moves are
+    // written after the fact), and out of the «ΕΠΟΜΕΝΑ · N» count, which is the week's own (owner 25/11).
+    if (r.kind === 'unassigned') r.old = !!r.dayKey && r.dayKey < week;
     days.find((d) => d.date === k).rows.push(r);
     if (r.kind === 'unassigned') for (const id of r.pieceIds) shown.add(id);
   }
@@ -605,7 +644,10 @@ function model(board, opts) {
   // ΕΠΟΜΕΝΑ: every VS still without a truck that this week shows. 'late' = the base's overdue of such a VS
   // (v_piece_state.overdue); a VS already on a cycle that delivers after its day is that row's amber rail (has_late),
   // never a card.
-  const queue = rows.filter((r) => r.kind === 'unassigned' && r.vs && shown.has(r.pieceIds[0])).map((r) => ({
+  // A local pickup is not a VS waiting for a truck (owner 25/11): its own group on the board, never a card here. An old
+  // one is a card with old: true, which the band counts apart from the week's.
+  const queue = rows.filter((r) => r.kind === 'unassigned' && r.vs && !r.pickupLocal && shown.has(r.pieceIds[0])).map((r) => ({
+    old: r.old,
     pieceId: r.pieceIds[0],
     orderId: r.group && r.group.order_id != null ? r.group.order_id : null,
     natOrderId: r.group && r.group.nat_order_id != null ? r.group.nat_order_id : null,
@@ -750,6 +792,6 @@ function awayNumbers(m, models) {
   return out;
 }
 
-const WN5L = freeze({ model, boardNumbers, localPanel, LOCAL_DELIVERY_NOTE, loadDayOf, weekOf, awayWeeks, awayNumbers, rowOrder, waitSide, segmentsOf, stopSegments, handoversOf, searchParts, cycleNumbers, capacity, stopRank, hubFromBoard, athensDay, athensTime, allDay, winText, DAY_WIN, palText, CAP, HUB_UNKNOWN, ShapeError });
+const WN5L = freeze({ model, localPlace, kmBetween, LOCAL_PICKUP_KM,boardNumbers, localPanel, LOCAL_DELIVERY_NOTE, loadDayOf, weekOf, awayWeeks, awayNumbers, rowOrder, waitSide, segmentsOf, stopSegments, handoversOf, searchParts, cycleNumbers, capacity, stopRank, hubFromBoard, athensDay, athensTime, allDay, winText, DAY_WIN, palText, CAP, HUB_UNKNOWN, ShapeError });
 if (typeof module !== 'undefined') module.exports = WN5L; else window.WN5L = WN5L;
 })();
