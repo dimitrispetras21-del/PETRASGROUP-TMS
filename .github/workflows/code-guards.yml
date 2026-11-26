@@ -104,9 +104,10 @@ jobs:
       # T188 (ValueDriven 26/11): core/fresh-on-return.js draws the page again when the user comes back to the tab or
       # when POST /changes says someone else changed what it shows. The pins: never on window focus (it swallowed the
       # click), never over a form, a typed search, the offline queue or offline; the cursor never skips a change; the
-      # route counts only other people's rows; the guard's --chg markers. Node only, no npm install.
+      # route counts only other people's rows; the guard's --chg markers; worker/guard-flags.txt still passes the guard
+      # (tools/predeploy-check.mjs reads it before every wrangler deploy). Node only, no npm install.
       - name: Run the fresh-on-return and /changes tests
         run: >-
           node --test
           tests/fresh-on-return.test.mjs tests/api-cache-drop-return.test.mjs
-          worker/test/changes.test.mjs worker/test/worker-guard-chg.test.mjs
+          worker/test/changes.test.mjs worker/test/worker-guard-chg.test.mjs worker/test/guard-flags.test.mjs

@@ -143,6 +143,9 @@ cd worker && CLOUDFLARE_API_TOKEN=$CF_API_TOKEN npx wrangler deploy
    (`git merge-base --is-ancestor <ζωντανή πηγή> <κλάδος deploy>`). Δύο αλλαγές
    Worker = **μία αλυσίδα**: η δεύτερη ξαναβασίζεται πάνω στην πρώτη, με ένα κοινό
    μηχανισμό (π.χ. ένας `stockRuleError` για όλες τις αρνήσεις 422).
+   **Ελέγχεται πλέον μόνος του** (ValueDriven 26/11): το `wrangler deploy` τρέχει πρώτα το
+   `worker/tools/predeploy-check.mjs` (`[build]` στο `wrangler.toml`), που σταματά το deploy όταν το branch δεν έχει
+   μέσα το `origin/main` ή όταν ο φρουρός αποτυγχάνει με τις σημαίες του `worker/guard-flags.txt`.
 3. **Ο φρουρός ελέγχει και ένα σημάδι ανά λειτουργία**, πριν και μετά, μαζί με
    τα τρία. Μόλις μια λειτουργία ανέβει, το σημάδι της μπαίνει εδώ και δεν
    αφαιρείται:
@@ -177,10 +180,9 @@ cd worker && CLOUDFLARE_API_TOKEN=$CF_API_TOKEN npx wrangler deploy
      085/089/101/099/102/104, `PLAN_WRITES_OPEN = false`)· αντικαταστάθηκε σε 5 λεπτά, 0 εγγραφές στο audit. **Deploy μόνο από
      worktree / branch του PR, και ο φρουρός στο bundle ΠΡΙΝ** (`wrangler deploy --dry-run --outdir`).
    - σειρά σημείων στο groupage, ανά σημείο (113 `order_stops.load_seq` + Worker 67dbb31e-9dce-4154-998f-d8492d3eb837, ζωντανό 15/11 ~19:40, από
-     3771f035): `"Load Seq": "load_seq"`, ακριβώς μία φορά **και** μέσα στο ORDER STOPS (`--seq 1`). **Σήμερα** η εντολή
-     είναι: `node worker/tools/worker-guard.mjs <bundle ή λήψη CF> --plan 2 --handover 1 --f3 1 --f5 1 --edit 1 --invoiced 1
-     --rate2 1 --self 1 --road 1 --wchk 1 --dkv 1 --pnlp 1 --pmiss 1 --ifs 1 --pnl 1 --plain 1 --seq 1` → `GUARD OK (47
-     markers, …, plain=1, seq=1)`. Επείγουσα επαναφορά: **πρώτα** η φόρμα κλείνει (`FEATURES.INTL_GROUP_FORM = false`, με
+     3771f035): `"Load Seq": "load_seq"`, ακριβώς μία φορά **και** μέσα στο ORDER STOPS (`--seq 1`). **Σήμερα** οι
+     σημαίες είναι η μία γραμμή του `worker/guard-flags.txt` (με το `--chg 1` του #346: `GUARD OK (49 markers, …, seq=1,
+     chg=1)`)· όποιο PR προσθέτει σημαία τη γράφει και εκεί, και το CI ελέγχει ότι το `main` περνά με αυτήν. Επείγουσα επαναφορά: **πρώτα** η φόρμα κλείνει (`FEATURES.INTL_GROUP_FORM = false`, με
      bump ?v= / SW_VERSION), γιατί με τον παλιό Worker το «Load Seq» πετιέται με 200 (η φόρμα το διαβάζει πίσω και λέει ότι η
      σειρά δεν κρατήθηκε, αλλά κάθε groupage θα έμενε χωρίς σειρά)· **μετά** `wrangler rollback 3423cec5-b7c6-460d-bcc6-67d4f7b8f166` (ο Worker του κύματος 2 των μηνυμάτων) → φρουρός με `--seq 0` →
      `GUARD OK (47 markers, … seq=0)`. Η 113 στη βάση μένει (ο 3423cec5 δεν τη διαβάζει)· το `113_stop_load_seq_rollback.sql`
