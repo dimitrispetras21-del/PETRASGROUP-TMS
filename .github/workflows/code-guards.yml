@@ -93,7 +93,7 @@ jobs:
           tests/sql-074a-drafts.test.js tests/wn5-labels.test.js
 
   fresh-on-return:
-    name: A return to the tab reads fresh data, never over a form
+    name: Other users' changes reach every open page, never over a form
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -101,8 +101,12 @@ jobs:
         with:
           node-version: '22'
 
-      # T188 (ValueDriven 26/11): core/fresh-on-return.js draws the page again when the user comes back to the tab.
-      # The pins: never on window focus (it swallowed the click), never over a form, a typed search or offline,
-      # the reference lists at most every 10 min. Node only, no npm install.
-      - name: Run the fresh-on-return tests
-        run: node --test tests/fresh-on-return.test.mjs tests/api-cache-drop-return.test.mjs
+      # T188 (ValueDriven 26/11): core/fresh-on-return.js draws the page again when the user comes back to the tab or
+      # when POST /changes says someone else changed what it shows. The pins: never on window focus (it swallowed the
+      # click), never over a form, a typed search, the offline queue or offline; the cursor never skips a change; the
+      # route counts only other people's rows; the guard's --chg markers. Node only, no npm install.
+      - name: Run the fresh-on-return and /changes tests
+        run: >-
+          node --test
+          tests/fresh-on-return.test.mjs tests/api-cache-drop-return.test.mjs
+          worker/test/changes.test.mjs worker/test/worker-guard-chg.test.mjs

@@ -122,7 +122,7 @@
 <!-- F36: the login window over the page (core/api.js opens it on a 401) and the new-version reload that waits for open forms. -->
 <script src="core/relogin.js?v=1793482508"></script>
 <script src="core/sw-update.js?v=1793482508"></script>
-<!-- T188: the page read again when the user comes back to the tab, never over an open form; inert at load. -->
+<!-- T188: the page read again when someone else changed it or the user comes back to the tab, never over an open form; inert at load. -->
 <script src="core/fresh-on-return.js?v=1795700000"></script>
 <script src="core/countries.js?v=1788767479"></script>
 <script src="core/utils.js?v=1793482508"></script>
@@ -276,7 +276,8 @@ function init() {
 }
 init();
 
-// T188 (26/11): a return to the tab draws the page again when it is over 60 s old (core/fresh-on-return.js).
+// T188 (26/11): other users' changes reach the open page (POST /changes every 30 s while visible) and a return to the
+// tab draws a page over 60 s old again; never over a form (core/fresh-on-return.js).
 if (typeof tmsFreshWatch === 'function') tmsFreshWatch();
 
 // Register Service Worker for offline mode + auto-update
