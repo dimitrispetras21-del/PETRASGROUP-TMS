@@ -307,7 +307,8 @@ function _gapSide(c, kath) {
   }
   return { side: 'ANODOS', day: null, toDay: null, veroia: null, vBefore: 0, headDim: false, from: [], to: [], pallets: 0, over: 0, sideDim: false, gap: { text }, pe: null };
 }
-function _tile(s, multi) {
+// c: the cycle (115, owner 25/11): a partner's plates and driver are the trip's free text, not a segment's
+function _tile(s, multi, c) {
   const type = s.has_vehicle !== true ? 'un' : s.trip_type === 'PARTNER' ? 'par' : 'own';
   const t = { type, label: s.label || null, line1: '', line2: '', segmentId: s.segment_id == null ? null : s.segment_id,
     partnerRate: type === 'par' && s.partner_rate != null ? Number(s.partner_rate) : null, missing: false };
@@ -324,7 +325,9 @@ function _tile(s, multi) {
       // carries none (Ε-35) → «—», never the rate in its place (Ε-36). The rate stays data (partnerRate, rates):
       // Δ1, the move list and the cycle card show it.
       // 2i (coordinator 1/11): nothing under the name rather than a bare «—»; the name on one line with «…» (CSS)
-      t.line2 = '';
+      // 115 (owner 25/11): the plates and the driver the dispatcher typed, so two trucks of one partner on a day
+      // differ; a board before 115 has neither key and the line stays empty, as before
+      t.line2 = [c && c.partner_plates, c && c.partner_driver].filter(Boolean).join(' · ');
     }
     return t;
   }
@@ -353,7 +356,7 @@ function _cycleRow(c, hubId, nums, errors) {
   const anod = A ? A.side : _gapSide(c, kath);
   const no = nums.get(c.rt_id) || null;
   const seg = segmentsOf(c);
-  const tiles = seg.segments.map((s) => _tile(s, seg.source === 'segments' && seg.segments.length > 1));
+  const tiles = seg.segments.map((s) => _tile(s, seg.source === 'segments' && seg.segments.length > 1, c));
   const pts = [...(kath ? kath.from.concat(kath.to) : []), ...anod.from, ...anod.to, ...rota.flatMap((x) => [x.from, x.to])];
   _marks(pts);
   // H-9 (072b): each point's segment from stop_ids alone; the Veroia loading head and the cycle end are stops too
@@ -415,7 +418,7 @@ function _cycleRow(c, hubId, nums, errors) {
     sortAt: sortStop ? sortStop.planned_from : c.start_at,
     // set by model(): the row belongs to another week (its dayKey is outside this one) — { week, dir: 'from' | 'to' }
     carried: false, away: null,
-    _parts: [c.truck, c.trailer, c.driver, c.partner, ...clients, ...places, ...refs],
+    _parts: [c.truck, c.trailer, c.driver, c.partner, c.partner_plates, c.partner_driver, ...clients, ...places, ...refs],
   };
 }
 // A hub[] item no truck has taken (live 072: an import VS without a national truck, a national that loads at

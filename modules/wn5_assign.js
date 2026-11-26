@@ -17,8 +17,10 @@
 //     two fields, «Κόμιστρο ΚΑΘΟΔΟΥ €» and «Κόμιστρο ΑΝΟΔΟΥ €», in the form of its vehicle (✈ / «Ανάθεση» of the
 //     trip). The base keeps the WHOLE fee (partner_rate, what the P&L reads) and the ΑΝΟΔΟΥ part
 //     (segment.partner_rate_anodos); the ΚΑΘΟΔΟΥ is the difference. An empty ΑΝΟΔΟΥ is saved as «λείπει» (NULL),
-//     never 0. One side = one field, as before. A new load has one side, so one field. The partner's «Πινακίδες»
-//     are not drawn: v5 has no column for them.
+//     never 0. One side = one field, as before. A new load has one side, so one field.
+//  6b. The partner's «Πινακίδες» and «Οδηγός» (115, owner 25/11 «on the trip»): free text on the trip, under the company,
+//     so two trucks of one partner on a day differ. Drawn only while the board names the keys (plan_board after 115):
+//     before it a field would be dropped by the base's key check, so it is not offered at all (principle 1).
 //  7. Every write goes through WN5Act._kit.send (one planFetch per press, the Worker's words in the strip, a reload
 //     after a 200). The pick mode («Νέο φορτίο») writes nothing: it hands the choice back.
 //  8. Nothing at load: listeners live with the open form only. Colours only through classes (hex 0 in this file).
@@ -54,12 +56,15 @@
     const st = { mode: vehicle ? 'vehicle' : (ctx.pick ? 'pick' : 'legs'), side: ctx.side === 'ANODOS' ? 'ANODOS' : 'KATHODOS', day: ctx.day || null,
       group: null, pieces: null, items: [], needs: [], pallets: 0, palUnk: 0, focus: k.id(ctx.focus), only: false,
       who: null, truck: null, trailer: null, driver: null, partner: null, rateTxt: '', typed: { tk: '', tl: '', dr: '', pt: '' },
+      ptx: false, pplTxt: '', pdrTxt: '',
       split: false, rate2Txt: '', rate0: '', rate20: '', an0: null, fee0: null, total: null, rateSide: null,
       win: {}, opt: null, sugg: {}, rtId: k.id(ctx.rtId), cur: null, hub: ctx.hub ? k.copy(ctx.hub) : null, week: null, cycles: [], sidePal: {}, ref: '', err: null };
     const b = k.state().board || {};
     st.week = b.week || null;
     // the form snapshots (two presses, the same bytes); forChoice is re-read at each redraw and copies nothing
     st.cycles = ctx.live ? k.cycles() : k.copy(k.cycles());
+    // rule 6b: the base takes the partner's plates / driver only once plan_board names them (115)
+    st.ptx = _ptxOn(st.cycles);
     // 109 (item 4): the international trips of the same board, held with its cycles (null = a base before 109)
     st.intl = Array.isArray(b.intl_trips) ? (ctx.live ? b.intl_trips : k.copy(b.intl_trips)) : null;
     if (vehicle) {
@@ -67,9 +72,13 @@
       if (!c) { st.err = k.clientErr('rt_missing', 'Δεν είναι στον πίνακα που φορτώθηκε — ανανέωσε'); return st; }
       st.cur = c;
       st.expect = k.expectOf(c);   // 110 (item 7): the change this form saw, held from the open, never refreshed under it
+      if (_multiSeg(c)) st.ptx = false;   // rule 6b: no plates on a trip with a handover
       const r = k.row(c.rt_id);
       st.day = st.day || WN5L.loadDayOf(r) || c.date_start;
-      if (c.trip_type === 'PARTNER' && c.partner_id != null) { st.who = 'partner'; st.partner = c.partner_id; st.rateTxt = c.partner_rate == null ? '' : String(c.partner_rate); }
+      if (c.trip_type === 'PARTNER' && c.partner_id != null) {
+        st.who = 'partner'; st.partner = c.partner_id; st.rateTxt = c.partner_rate == null ? '' : String(c.partner_rate);
+        st.pplTxt = c.partner_plates || ''; st.pdrTxt = c.partner_driver || '';
+      }
       else if (c.truck_id != null) { st.who = 'own'; st.truck = c.truck_id; st.trailer = c.trailer_id || null; st.driver = c.driver_id || null; }
       _splitOf(st, c);
     } else {
@@ -98,6 +107,20 @@
     for (const c of st.cycles) { const r = k.row(c.rt_id); st.sidePal[c.rt_id] = { pal: k.sidePal(r, st.side), unk: k.sideUnk(r, st.side) }; }
     return st;
   }
+  // rule 6b: the limits of 115's CHECK rt_partner_text_shape, in characters (as Postgres length() counts them)
+  const PTX_MAX = Object.freeze({ ppl: 40, pdr: 80 });
+  const _chars = (s) => [...String(s || '')].length;
+  // a trip with a handover has no one partner truck: the board, the week paper and the sheet show no plates there, so
+  // the form does not take them either (code review 25/11: saved and shown nowhere)
+  const _multiSeg = (c) => !!c && Array.isArray(c.segments) && c.segments.length > 1;
+  // rule 6b: the keys of plan_board after 115 — every cycle names both (null until typed); a week with no cycle cannot
+  // tell, so the fields wait for one (they are given later in the trip's own «Ανάθεση»)
+  const _ptxOn = (cycles) => Array.isArray(cycles) && cycles.length > 0 && cycles.every((c) => c && 'partner_plates' in c && 'partner_driver' in c);
+  // the base's own reading (plan_h_partner_text): spaces and line breaks folded to one, trimmed, blank = null
+  const _ptxt = (v) => String(v == null ? '' : v).replace(/[\s\u0000-\u001f\u007f]+/g, ' ').trim() || null;
+  // the keys a partner save carries: both, always (a present key wins, even null), only once 115 runs
+  const _ptxKeys = (st) => (st.ptx ? { partner_plates: _ptxt(st.pplTxt), partner_driver: _ptxt(st.pdrTxt) } : {});
+  const _ptxChanged = (st, c) => st.ptx && (_ptxt(st.pplTxt) !== (c.partner_plates || null) || _ptxt(st.pdrTxt) !== (c.partner_driver || null));
   // 089 (rule 6): two fields when the trip has both sides and ONE vehicle (with a handover each segment has its own fee,
   // «Αλλαγή οχήματος…»), and only once 089 runs: its plan_h_seg_json names partner_rate_anodos on every segment (null
   // included). Before it the key is absent and the form keeps one field (the base would refuse the key: bad_input).
@@ -323,11 +346,11 @@
       }
       if (st.who === 'partner' && st.partner && st.split) {
         const s = _split(st);
-        return s.ok ? { method: 'PATCH', path: '/plan/rt/' + st.rtId, body: k.withExpect({ set: Object.assign({ trip_type: 'PARTNER', partner_id: st.partner }, s.keys) }, st.expect) } : null;
+        return s.ok ? { method: 'PATCH', path: '/plan/rt/' + st.rtId, body: k.withExpect({ set: Object.assign({ trip_type: 'PARTNER', partner_id: st.partner }, s.keys, _ptxKeys(st)) }, st.expect) } : null;
       }
       if (st.who === 'partner' && st.partner) {
         const r = k.rate(st.rateTxt);
-        return r.ok ? { method: 'PATCH', path: '/plan/rt/' + st.rtId, body: k.withExpect({ set: { trip_type: 'PARTNER', partner_id: st.partner, partner_rate: r.v } }, st.expect) } : null;
+        return r.ok ? { method: 'PATCH', path: '/plan/rt/' + st.rtId, body: k.withExpect({ set: Object.assign({ trip_type: 'PARTNER', partner_id: st.partner, partner_rate: r.v }, _ptxKeys(st)) }, st.expect) } : null;
       }
       return null;
     }
@@ -341,7 +364,10 @@
     else {
       const r = k.rate(st.rateTxt);
       if (!r.ok) return null;
-      target = { new_rt: { trip_type: 'PARTNER', partner_id: st.partner, partner_rate: r.v }, side: st.side };
+      // rule 6b: a new partner trip names only what was typed (an empty key adds nothing to a new trip)
+      const tx = _ptxKeys(st);
+      for (const key of Object.keys(tx)) if (tx[key] === null) delete tx[key];
+      target = { new_rt: Object.assign({ trip_type: 'PARTNER', partner_id: st.partner, partner_rate: r.v }, tx), side: st.side };
     }
     const hd = st.hub ? st.hub.day : _hd(st);
     const hubWin = st.hub ? (k.hhmm(st.hub.from) && k.hhmm(st.hub.to) ? k.win(st.hub.day, k.hhmm(st.hub.from), k.hhmm(st.hub.to)) : null) : _winOf(st, 'hub', hd, tg.after);
@@ -386,6 +412,13 @@
       // an empty ΑΝΟΔΟΥ is saved as «λείπει» (coordinator 1/11): said beside the field, never a block
       if (b.ok && b.v === null) out.soft.rate2 = 'λείπει';
     } else if (st.who === 'partner' && !k.rate(st.rateTxt).ok) { out.fields.rate = 'μόνο αριθμός'; add('κόμιστρο (αριθμός)'); }
+    // rule 6b: the base's limits (115 CHECK rt_partner_text_shape), said before the press, never cut in silence
+    // only when they are sent: joining a partner trip sends none (its own are shown, read-only)
+    const joins = st.mode !== 'vehicle' && !!(_target(st) || {}).cyc;
+    if (st.who === 'partner' && st.ptx && !joins) {
+      if (_chars(_ptxt(st.pplTxt)) > PTX_MAX.ppl) { out.fields.ppl = 'έως ' + PTX_MAX.ppl; add('πινακίδες (έως ' + PTX_MAX.ppl + ')'); }
+      if (_chars(_ptxt(st.pdrTxt)) > PTX_MAX.pdr) { out.fields.pdr = 'έως ' + PTX_MAX.pdr; add('οδηγός συνεργάτη (έως ' + PTX_MAX.pdr + ')'); }
+    }
     if (st.mode === 'vehicle') return out;
     const tg = _target(st);
     for (const row of _rows(st, tg && tg.cyc)) {
@@ -633,6 +666,8 @@
     const rateAv = rateBad || _sumAv(st);
     const bad2 = pb.fields.rate2, av2 = bad2 || pb.soft.rate2 || '';
     h += '<div class="wn5a-sec"><div class="wi-pop-section-lbl">ΣΥΝΕΡΓΑΤΗΣ</div><div class="wi-pop-row">' + _fieldHTML(st, 'pt', pb)
+      // rule 6b: the company alone on its line (four fields side by side cut its name), plates · driver · fee under it
+      + ((ptxH) => (ptxH ? '</div><div class="wi-pop-row">' + ptxH : ''))(_ptxHTML(st, joinPar ? tg.cyc : null))
       + '<div class="wi-pop-field wn5a-f wn5a-rate' + (rateBad ? ' wn5a-bad' : '') + '" data-f="rate"><span class="wi-pop-lbl">' + rateLbl + '</span>'
       + '<input class="wi-pop-inp" data-rate inputmode="decimal" placeholder="0.00" value="' + _e(rateVal) + '"' + (joinPar ? ' disabled' : '') + ' aria-label="' + rateLbl + '">'
       + '<span class="wn5a-av' + (rateBad ? ' bad' : '') + '">' + _e(rateAv) + '</span></div>'
@@ -643,6 +678,21 @@
     if (st.mode !== 'vehicle') h += _lineHTML(st);
     h += (rows ? '</div>' : '') + '</div>';
     return h;
+  }
+  // rule 6b: «Πινακίδες» and «Οδηγός» of the partner, free text (no list). Joining a partner trip shows that trip's own,
+  // read-only, as its fee (a change of them is the trip's «Ανάθεση»)
+  function _ptxHTML(st, joinCyc) {
+    if (!st.ptx || _multiSeg(joinCyc)) return '';
+    const dis = joinCyc ? ' disabled' : '';
+    // no maxlength: a longer paste would be cut in silence (principle 1); the field turns red «έως N» instead
+    const f = (attr, lbl, ph, max, val, mono) => {
+      const bad = !joinCyc && _chars(_ptxt(val)) > max;
+      return '<div class="wi-pop-field wn5a-f wn5a-ptx' + (bad ? ' wn5a-bad' : '') + '" data-f="' + attr + '"><span class="wi-pop-lbl">' + lbl + '</span>'
+        + '<input type="text" class="wi-pop-inp' + (mono ? ' wn5a-mono' : '') + '" data-' + attr + ' placeholder="' + ph + '" value="' + _e(val) + '" autocomplete="off"' + dis + ' aria-label="' + lbl + ' συνεργάτη">'
+        + '<span class="wn5a-av' + (bad ? ' bad' : '') + '">' + (bad ? 'έως ' + max : '') + '</span></div>';
+    };
+    return f('ppl', 'Πινακίδες', 'Πινακίδα…', PTX_MAX.ppl, joinCyc ? joinCyc.partner_plates || '' : st.pplTxt, true)
+      + f('pdr', 'Οδηγός', 'Όνομα…', PTX_MAX.pdr, joinCyc ? joinCyc.partner_driver || '' : st.pdrTxt, false);
   }
   // the order and its way in the header (Figma: «#2041 · Βέροια Δευ 12/10 → Lambda Pack, Larisa Τρί 13/10 · 12π»)
   function _sub(st) {
@@ -736,9 +786,9 @@
       if (st.who === 'partner' && st.split) {
         if (st.partner !== c.partner_id) return true;
         const s = _split(st);
-        return s.ok && 'partner_rate' in s.keys && (s.keys.partner_rate !== (c.partner_rate == null ? null : Number(c.partner_rate)) || s.keys.partner_rate_anodos !== st.an0);
+        return s.ok && (_ptxChanged(st, c) || ('partner_rate' in s.keys && (s.keys.partner_rate !== (c.partner_rate == null ? null : Number(c.partner_rate)) || s.keys.partner_rate_anodos !== st.an0)));
       }
-      if (st.who === 'partner') return st.partner !== c.partner_id || (k.rate(st.rateTxt).v !== (c.partner_rate == null ? null : Number(c.partner_rate)));
+      if (st.who === 'partner') return st.partner !== c.partner_id || _ptxChanged(st, c) || (k.rate(st.rateTxt).v !== (c.partner_rate == null ? null : Number(c.partner_rate)));
       return false;
     };
     d.refresh = () => {
@@ -762,7 +812,7 @@
     const draw = (focus) => {
       _dropList();
       drawing = true;
-      const f = focus && focus.getAttribute && d.body.contains(focus) ? ['data-in', 'data-hm', 'data-rate', 'data-rate2', 'data-row'].map((a) => [a, focus.getAttribute(a)]).filter((x) => x[1] !== null) : null;
+      const f = focus && focus.getAttribute && d.body.contains(focus) ? ['data-in', 'data-hm', 'data-rate', 'data-rate2', 'data-ppl', 'data-pdr', 'data-row'].map((a) => [a, focus.getAttribute(a)]).filter((x) => x[1] !== null) : null;
       try { d.body.innerHTML = bodyHTML(st); } finally { drawing = false; }
       d.refresh();
       if (f && f.length) {
@@ -804,9 +854,10 @@
     };
     // Entry test 25/11 (finding 3): no field had the focus when the form opened (typed keys were lost) and a pick
     // redrew the form with the focus nowhere, so every field took a mouse click. The focus goes to the first empty
-    // field after `from` in the order truck → trailer → driver → partner → fee, skipping the side that does not
-    // execute; when nothing is left, to the save. Focusing a field opens its list, as a click does.
-    const ORDER = ['tk', 'tl', 'dr', 'pt', 'rate'];
+    // field after `from` in the order truck → trailer → driver → partner → plates → driver → fee (rule 6b), skipping
+    // the side that does not execute; when nothing is left, to the save. Focusing a field opens its list, as a click does.
+    const ORDER = ['tk', 'tl', 'dr', 'pt', 'ppl', 'pdr', 'rate'];
+    const SEL = { rate: '[data-rate]', ppl: '[data-ppl]', pdr: '[data-pdr]' };
     let quiet = false;
     const _focusNext = (from) => {
       if (d.closed) return;
@@ -814,7 +865,7 @@
       for (const px of ORDER.slice(from ? ORDER.indexOf(from) + 1 : 0)) {
         if (st.who === 'own' && !own.includes(px)) continue;
         if (st.who === 'partner' && own.includes(px)) continue;
-        const el = d.body.querySelector(px === 'rate' ? '[data-rate]' : '[data-in="' + px + '"]');
+        const el = d.body.querySelector(SEL[px] || '[data-in="' + px + '"]');
         if (!el || el.disabled || el.value.trim()) continue;
         // focused quietly: its list opens at the first key (or a click), never by itself — an open list over the
         // fields below took the next click as a pick (rig partner / accept_busy)
@@ -832,13 +883,17 @@
     const choose = (px, id, next) => {
       if (px === 'dr' || px === 'pt') picks++;
       const f = FIELDS[px];
+      const prev = st[f.key];
       st[f.key] = id;
       st.typed[px] = '';
       st.sugg[px] = false;
       if (px === 'tl' || px === 'dr') fromJoin = false;   // the user's own pick from here on
+      // rule 6b: another company's plates and driver are not this one's
+      // (the trip's own company picked again after its field was emptied keeps them: code review 25/11)
+      if (px === 'pt' && id !== prev && !(st.cur && st.cur.partner_id === id)) st.pplTxt = st.pdrTxt = '';
       if (px === 'pt') { st.who = 'partner'; st.truck = st.trailer = st.driver = null; st.typed.tk = st.typed.tl = st.typed.dr = ''; st.opt = null; st.sugg = {}; }
       else {
-        if (st.who !== 'own') { st.partner = null; st.typed.pt = ''; if (st.mode !== 'vehicle') st.rateTxt = ''; }
+        if (st.who !== 'own') { st.partner = null; st.typed.pt = ''; st.pplTxt = st.pdrTxt = ''; if (st.mode !== 'vehicle') st.rateTxt = ''; }
         st.who = 'own';
         if (px === 'tk') { st.opt = null; _vehicleOf(st); }
       }
@@ -942,6 +997,16 @@
     d.dlg.addEventListener('input', (ev) => {
       const t = ev.target;
       if (t.matches('[data-in]')) { list && (list.hi = 0); openList(t); return; }
+      // rule 6b: free text, no list and no redraw (the caret stays); the save button follows
+      if (t.matches('[data-ppl]') || t.matches('[data-pdr]')) {
+        const key = t.matches('[data-ppl]') ? 'ppl' : 'pdr';
+        if (key === 'ppl') st.pplTxt = t.value; else st.pdrTxt = t.value;
+        const msg = problems(st).fields[key] || '';
+        const f = t.closest('.wn5a-f'), av = f && f.querySelector('.wn5a-av');
+        if (f) f.classList.toggle('wn5a-bad', !!msg);
+        if (av) { av.textContent = msg; av.classList.toggle('bad', !!msg); }
+        d.refresh(); return;
+      }
       if (t.matches('[data-rate]') || t.matches('[data-rate2]')) {
         if (t.matches('[data-rate]')) st.rateTxt = t.value; else st.rate2Txt = t.value;
         // both fields: «γράψε ποσό» of the ΚΑΘΟΔΟΥ follows what is typed in the ΑΝΟΔΟΥ (rule 6), no redraw (the caret stays)
@@ -1007,7 +1072,8 @@
 
   // the choice of the pick mode: who executes, the windows typed, the cycle shown (the caller re-reads it at the save)
   function choiceOf(st) {
-    return K().copy({ who: st.who, truck: st.truck, trailer: st.trailer, driver: st.driver, partner: st.partner, rateTxt: st.rateTxt, win: st.win, opt: st.opt, sugg: st.sugg });
+    return K().copy({ who: st.who, truck: st.truck, trailer: st.trailer, driver: st.driver, partner: st.partner, rateTxt: st.rateTxt,
+      pplTxt: st.pplTxt, pdrTxt: st.pdrTxt, win: st.win, opt: st.opt, sugg: st.sugg });
   }
 
   // ═══ public ═══

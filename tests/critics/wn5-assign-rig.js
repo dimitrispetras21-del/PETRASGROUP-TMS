@@ -70,7 +70,7 @@ async function own_new({ browser, origin, ok, scn, shots }) {
   ok(scn, 'the form opens (Ανάθεση · ΗΜΕΡΑ ΚΑΙ ΠΑΡΑΘΥΡΟ · ΔΙΚΟΣ ΣΤΟΛΟΣ · ΣΥΝΕΡΓΑΤΗΣ), no tabs, no candidate list',
     /Ανάθεση/.test(t0) && /ΗΜΕΡΑ ΚΑΙ ΠΑΡΑΘΥΡΟ/.test(t0) && /ΔΙΚΟΣ ΣΤΟΛΟΣ/.test(t0) && /ΣΥΝΕΡΓΑΤΗΣ/.test(t0) && !(await K.count(page, `${DLG} .wn5-cand, ${DLG} .wn5-seg`)), t0);
   ok(scn, 'no «κύκλος», RT code, «σκέλος / γέφυρα / κομμάτι / τμήμα» in the form', !jargon(t0).length, jargon(t0));
-  ok(scn, 'the partner\'s «Πινακίδες» and an ΑΝΟΔΟΥ rate are not drawn (no column / needs SQL)', !/Πινακίδες/.test(t0) && !/ΑΝΟΔΟΥ/.test(t0), t0);
+  ok(scn, 'before 115 (no partner_plates on the board) and 089: the partner\'s «Πινακίδες» and an ΑΝΟΔΟΥ rate are not drawn', !/Πινακίδες/.test(t0) && !/ΑΝΟΔΟΥ/.test(t0), t0);
   let f = await foot(page);
   ok(scn, 'nothing chosen: save off, «Λείπει: φορτηγό ή συνεργάτης»', f.off && /Λείπει: φορτηγό ή συνεργάτης/.test(f.miss), f);
   ok(scn, 'pick truck TST-2106 from the list', await pickIn(page, 'tk', '2106', 'TST-2106'));
@@ -834,6 +834,16 @@ async function fit({ browser, origin, ok, scn, shots }) {
       await page.context().close();
     }
     {
+      // 115 (code review 25/11): the partner's second row (plates · driver · fee) in the two-column form of a VS
+      const { page } = await K.openApp(browser, origin, { board: withPtx(board()), viewport: vp });
+      await openWaiting(page, 4201);
+      await pickIn(page, 'pt', 'Partner', 'Partner Test 01');
+      await page.waitForTimeout(150);
+      const f = await K.fitOf(page, DLG);
+      ok(scn, tag + ' «Ανάθεση» with a partner after 115 (plates · driver · fee row): nothing scrolls in it', K.fits(f) && (await K.count(page, `${DLG} [data-ppl]`)) === 1, f);
+      await page.context().close();
+    }
+    {
       const { page } = await K.openApp(browser, origin, { board: hubBoard(), viewport: vp });
       await page.click('#wn5-hub [data-hub="open"]');
       await page.click('#wn5-hub .wn5-hub-it[data-piece="4201"] .wn5-hub-ck');
@@ -992,6 +1002,136 @@ async function rt_expect({ browser, origin, ok, scn, shots }) {
   await page.context().close();
 }
 
+// 115 (owner 25/11 «on the trip»): the partner's «Πινακίδες» and «Οδηγός», free text under the company. Before 115
+// the board names neither key and no field is drawn (a key the base would refuse is never offered); after it the Tab
+// order is truck → trailer → driver → partner → plates → driver → fee, the new trip carries what was typed, the vehicle
+// form sends both keys (a present key wins, even null), and the board row says the plates under the company.
+const withPtx = (b, vals) => { for (const c of b.cycles) Object.assign(c, { partner_plates: null, partner_driver: null }, (vals || {})[c.rt_id] || {}); return b; };
+const VP1440 = { width: 1440, height: 900 };   // the before / after screenshots of the PR
+async function partner_text({ browser, origin, ok, scn, shots }) {
+  // before 115: no field, no key
+  let { page, S } = await K.openApp(browser, origin, { board: board(), plan: { 'POST /plan/legs': async () => OK('plan_put_group') }, viewport: VP1440 });
+  await openWaiting(page, 4101);
+  await pickIn(page, 'pt', 'Partner', 'Partner Test 01');
+  ok(scn, 'before 115 (the board names no partner_plates): no «Πινακίδες» / «Οδηγός» field of the partner', !(await K.count(page, `${DLG} [data-ppl], ${DLG} [data-pdr]`)));
+  await page.fill(`${DLG} [data-rate]`, '300');
+  await page.click(`${DLG} [data-act="save"]`);
+  await page.waitForTimeout(400);
+  let w = saves(S);
+  ok(scn, 'before 115: new_rt without partner_plates / partner_driver', w.length === 1 && !('partner_plates' in w[0].body.target.new_rt) && !('partner_driver' in w[0].body.target.new_rt), w.map((x) => x.raw));
+  await page.context().close();
+
+  // after 115: the fields, their order, the body of a new trip
+  ({ page, S } = await K.openApp(browser, origin, { board: withPtx(board()), plan: { 'POST /plan/legs': async () => OK('plan_put_group') }, viewport: VP1440 }));
+  await openWaiting(page, 4101);
+  const order = await page.evaluate((s) => [...document.querySelectorAll(`${s} input[data-in], ${s} input[data-ppl], ${s} input[data-pdr], ${s} input[data-rate]`)]
+    .map((i) => i.dataset.in || (i.hasAttribute('data-ppl') ? 'ppl' : i.hasAttribute('data-pdr') ? 'pdr' : 'rate')), DLG);
+  ok(scn, 'the Tab order of the fields: tk tl dr pt ppl pdr rate', order.join(' ') === 'tk tl dr pt ppl pdr rate', order);
+  await pickIn(page, 'pt', 'Partner', 'Partner Test 01');
+  const foc = await page.evaluate(() => (document.activeElement && document.activeElement.hasAttribute('data-ppl')) || false);
+  ok(scn, 'after the company the cursor is in «Πινακίδες»', foc);
+  await page.keyboard.type('  TST-P 101 ');
+  await page.keyboard.press('Tab');
+  await page.keyboard.type('Driver  P1');
+  await page.keyboard.press('Tab');
+  const onRate = await page.evaluate(() => (document.activeElement && document.activeElement.hasAttribute('data-rate')) || false);
+  ok(scn, 'Tab: plates → driver → fee', onRate);
+  // no silent cut (code review 25/11): 41 characters turn the field red «έως 40» and say it beside the save
+  await page.fill(`${DLG} [data-ppl]`, 'X'.repeat(41));
+  const lf = await field(page, 'ppl'), lft = await foot(page);
+  ok(scn, '41 characters: «Πινακίδες» red «έως 40», «Λείπει: πινακίδες (έως 40)», save off, nothing cut', lf.bad && lf.val.length === 41 && /έως 40/.test(lf.av) && lft.off && /πινακίδες \(έως 40\)/.test(lft.miss), { lf, lft });
+  await page.fill(`${DLG} [data-ppl]`, '  TST-P 101 ');
+  await page.focus(`${DLG} [data-rate]`);
+  await page.keyboard.type('300');
+  if (shots) await (await page.$(DLG)).screenshot({ path: shots + '/partner-text.png' });
+  await page.click(`${DLG} [data-act="save"]`);
+  await page.waitForTimeout(400);
+  w = saves(S);
+  ok(scn, 'new_rt PARTNER 51, rate 300, plates «TST-P 101», driver «Driver P1» (trimmed, spaces folded)', w.length === 1
+    && JSON.stringify(w[0].body.target.new_rt) === JSON.stringify({ trip_type: 'PARTNER', partner_id: 51, partner_rate: 300, partner_plates: 'TST-P 101', partner_driver: 'Driver P1' }), w.map((x) => x.raw));
+  await page.context().close();
+}
+// the board row and the vehicle form of a partner trip: prefilled, save off until a change, both keys sent
+async function partner_text_board({ browser, origin, ok, scn, shots }) {
+  let page, S, w;
+  const pb = partnerBoard(null);
+  for (const c of pb.cycles) for (const g of c.segments) delete g.partner_rate_anodos;   // one fee field (before 089's key)
+  withPtx(pb, { 101: { partner_plates: 'TST-P 111' }, 102: { partner_plates: 'TST-P 222', partner_driver: 'Driver P2' } });
+  ({ page, S } = await K.openApp(browser, origin, { board: pb, plan: { 'PATCH /plan/rt/101': async () => OK('plan_rt_update') }, viewport: VP1440 }));
+  const tiles = await page.evaluate(() => [...document.querySelectorAll('#content .wi4-box.par')].map((b) => b.textContent.replace(/\s+/g, ' ').trim()));
+  ok(scn, 'the board: two trucks of one partner differ by their plates under the company', tiles.some((t) => /Partner Test 01\s*TST-P 111/.test(t)) && tiles.some((t) => /TST-P 222 · Driver P2/.test(t)), tiles);
+  if (shots) await page.screenshot({ path: shots + '/partner-text-board.png' });
+  await page.evaluate(() => WN5Act.assign(null, { entry: 'menu', rtId: 101 }));
+  await page.waitForSelector(DLG, { timeout: 4000 });
+  const pl = await field(page, 'ppl'), pd = await field(page, 'pdr');
+  ok(scn, 'prefilled from the trip: «TST-P 111», driver empty', pl && pl.val === 'TST-P 111' && pd && pd.val === '', { pl, pd });
+  // code review 25/11: the company emptied and picked again keeps the trip's plates
+  await page.fill(`${DLG} [data-in="pt"]`, '');
+  await page.focus(`${DLG} [data-in="tk"]`);
+  await page.waitForTimeout(100);
+  await pickIn(page, 'pt', 'Partner', 'Partner Test 01');
+  ok(scn, 'the same company picked again after emptying its field keeps «TST-P 111»', (await field(page, 'ppl')).val === 'TST-P 111', await field(page, 'ppl'));
+  let f = await foot(page);
+  ok(scn, 'unchanged: save off', f.off, f);
+  await page.fill(`${DLG} [data-pdr]`, 'Driver P3');
+  f = await foot(page);
+  ok(scn, 'a driver typed: save on', !f.off, f);
+  await page.click(`${DLG} [data-act="save"]`);
+  await page.waitForTimeout(400);
+  w = saves(S);
+  ok(scn, 'PATCH /plan/rt/101 {set: PARTNER 51, rate 700, plates «TST-P 111», driver «Driver P3»}', w.length === 1
+    && JSON.stringify(w[0].body) === JSON.stringify({ set: { trip_type: 'PARTNER', partner_id: 51, partner_rate: 700, partner_plates: 'TST-P 111', partner_driver: 'Driver P3' } }), w.map((x) => x.raw));
+  await page.evaluate(() => WN5Act.assign(null, { entry: 'menu', rtId: 101 }));
+  await page.waitForSelector(DLG, { timeout: 4000 });
+  await page.fill(`${DLG} [data-ppl]`, '   ');
+  await page.click(`${DLG} [data-act="save"]`);
+  await page.waitForTimeout(400);
+  w = saves(S);
+  ok(scn, 'plates emptied: partner_plates null (a present key wins, even null)', w.length === 2 && w[1].body.set.partner_plates === null && w[1].body.set.partner_driver === null, w.map((x) => x.raw));
+  const t = await dlgText(page);
+  ok(scn, 'no RT code in the form', !jargon(t || '').length, t);
+  await page.context().close();
+  // code review 25/11: a trip with a handover (two segments) has no one partner truck: no fields, nothing saved unseen
+  const mb = partnerBoard(null);
+  withPtx(mb);
+  const c2 = mb.cycles.find((c) => c.rt_id === 101);
+  c2.segments = [Object.assign({}, c2.segments[0], { segment_id: 991, label: 'A' }), Object.assign({}, c2.segments[0], { segment_id: 992, label: 'B', partner_id: 52, partner: 'Partner Test 02' })];
+  ({ page } = await K.openApp(browser, origin, { board: mb, viewport: VP1440 }));
+  await page.evaluate(() => WN5Act.assign(null, { entry: 'menu', rtId: 101 }));
+  await page.waitForSelector(DLG, { timeout: 4000 }).catch(() => {});
+  ok(scn, 'a trip with a handover: no «Πινακίδες» / «Οδηγός» of the partner in its form', !(await K.count(page, `${DLG} [data-ppl], ${DLG} [data-pdr]`)));
+  await page.context().close();
+}
+
+// the two papers of a partner trip (coordinator 25/11): the driver sheet and the week paper, drawn by the app's own
+// print paths (window.open caught, nothing printed), the plates and the driver where a truck stands. Shots in colour.
+async function partner_text_papers({ browser, origin, ok, scn, shots }) {
+  const pb = partnerBoard(null);
+  for (const c of pb.cycles) for (const g of c.segments) delete g.partner_rate_anodos;
+  withPtx(pb, { 101: { partner_plates: 'TST-P 111', partner_driver: 'Driver P1' }, 102: { partner_plates: 'TST-P 222' } });
+  const { page } = await K.openApp(browser, origin, { board: pb, viewport: VP1440 });
+  const grab = (fn) => page.evaluate(async (f) => {
+    let doc = null;
+    const real = window.open, rp = window.print;
+    window.open = () => ({ document: { write: (h) => { doc = h; }, close() {} }, print() {} });
+    try { if (f === 'sheet') await WN5Sheet.print(101, 'ALL'); else await WN5.printWeek(); } finally { window.open = real; }
+    await new Promise((r) => setTimeout(r, 700));
+    return doc;
+  }, fn);
+  for (const [fn, re] of [['sheet', /TST-P 111/], ['week', /TST-P 111 · Driver P1/]]) {
+    const doc = await grab(fn);
+    ok(scn, `the ${fn === 'sheet' ? 'driver sheet' : 'week paper'} names the plates of the partner truck`, !!doc && re.test(doc), (doc || '').slice(0, 200));
+    if (shots && doc) {
+      const p2 = await page.context().newPage();
+      await p2.setViewportSize(fn === 'sheet' ? { width: 900, height: 1270 } : { width: 1440, height: 1000 });
+      await p2.setContent(doc.replace(/<link[^>]+fonts\.googleapis[^>]+>/g, ''), { waitUntil: 'load' });
+      await p2.screenshot({ path: `${shots}/paper-${fn}.png`, fullPage: true });
+      await p2.close();
+    }
+  }
+  await page.context().close();
+}
+
 // owner 25/11 (usability test): «+ Νέος οδηγός» in the driver list. A dispatcher types a name no driver carries, picks
 // the type, the DRIVERS POST carries exactly Full Name + Type, the catalogue is read again and the new driver (found by
 // the legacy id the POST answered) is the one the assignment sends. A 403 (a Worker before the deploy) is said in the
@@ -1085,7 +1225,7 @@ async function new_driver({ browser, origin, ok, scn, shots }) {
   await r3.page.context().close();
 }
 
-K.run({ scenarios: { own_new, new_driver, own_join, only_hours, partner, accept_busy, vehicle, rate2, handover, veroia_list, veroia_new, f61, f54, veroia_later, pr3b, veroia_busy, veroia_fixes, busy3, fit, sotiris_late, sotiris_warn, sotiris_esc, sotiris_hub_after, rt_expect }, globals: ['WN5', 'WN5Act', 'WN5Assign', 'WN5Hand'],
+K.run({ scenarios: { own_new, new_driver, own_join, only_hours, partner, accept_busy, vehicle, rate2, handover, veroia_list, veroia_new, f61, f54, veroia_later, pr3b, veroia_busy, veroia_fixes, busy3, fit, sotiris_late, sotiris_warn, sotiris_esc, sotiris_hub_after, rt_expect, partner_text, partner_text_board, partner_text_papers }, globals: ['WN5', 'WN5Act', 'WN5Assign', 'WN5Hand'],
   // new_driver's scripted 403: _atRetry logs the refusal once (the app's own record of it, core/api.js)
   designedConsole: [/^\[TMS ERROR\] _atRetry 403: Error: Δεν έχετε δικαίωμα για αυτή την ενέργεια — Forbidden/],
   go: 'the assignment form (own new / join / only / hours / F39 / partner / vehicle / F51-F61 / F54 / F56 / 089 two fees), ✈ «Αλλαγή οχήματος…» and the Veroia board v2 «Νέο φορτίο» hold' });

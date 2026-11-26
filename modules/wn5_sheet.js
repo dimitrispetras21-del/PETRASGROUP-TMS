@@ -122,9 +122,15 @@
     const kStops = _partStops(cycle, 'KATHODOS');
     const vStop = kStops.find((s) => P.hubId != null && s.location_id === P.hubId && (s.legs || []).some((l) => l.act === 'load'));
     // the segment keys only on a segment sheet: without one the head is T23's, key for key (R-59)
+    // 115 (owner 25/11): the partner's plates and driver are the trip's free text; on the sheet of a partner trip they
+    // stand where a truck plate and a driver stand. Keys only when typed (a sheet without them is T23's, key for key)
+    // a trip with a handover has no one partner truck (board and week paper say no plates there either)
+    const oneSeg = !Array.isArray(cycle.segments) || cycle.segments.length <= 1;
+    const ptx = partner && !SG && oneSeg ? { plates: cycle.partner_plates || null, pdriver: cycle.partner_driver || null } : {};
     const out = [Object.assign({ t: 'head', partner: partner ? _dash(veh.partner) : null, driver: partner ? null : _dash(veh.driver),
       truck: partner ? null : _dash(veh.truck), trailer: partner ? null : _dash(veh.trailer),
       veroia: vStop ? `${_dlab(vStop.stop_day)} · ${_hmWin(vStop.planned_from, vStop.planned_to)}` : '—' },
+    ptx.plates ? { plates: ptx.plates } : {}, ptx.pdriver ? { pdriver: ptx.pdriver } : {},
     SG ? { segment: SEG_GR[SG.seg.label] || '—', segLabel: SG.seg.label || null, change: SG.changeText || '—' } : {})];
     let n = 0;
     let firstPallets = null, firstUnk = 0;
@@ -164,7 +170,7 @@
   function text(ls, meta) {
     const m = meta || {};
     const h = ls.find((l) => l.t === 'head') || {};
-    const out = [h.partner ? `*${h.partner}*` : `*${[h.truck, h.trailer, h.driver].filter((x) => x && x !== '—').join(' · ')}*`,
+    const out = [h.partner ? `*${[h.partner, h.plates, h.pdriver].filter(Boolean).join(' · ')}*` : `*${[h.truck, h.trailer, h.driver].filter((x) => x && x !== '—').join(' · ')}*`,
       [m.week, m.cycleNo ? 'κύκλος ' + m.cycleNo : ''].filter(Boolean).join(' · ')];
     // H5 2146:7738: the handover lines go first — where, from whom (or to whom), his phone when the catalogue has it
     out.unshift(...ls.filter((l) => l.t === 'hand').flatMap((x) => [
@@ -202,7 +208,8 @@
     const m = meta || {};
     const h = ls.find((l) => l.t === 'head') || {};
     const chk = ls.find((l) => l.t === 'check') || { pallets: 0 };
-    const band = (h.partner ? [['ΣΥΝΕΡΓΑΤΗΣ', h.partner]] : [['ΟΔΗΓΟΣ', h.driver], ['ΦΟΡΤΗΓΟ', h.truck, 1], ['ΡΥΜΟΥΛΚΑ', h.trailer, 1]])
+    const band = (h.partner ? [['ΣΥΝΕΡΓΑΤΗΣ', h.partner]].concat(h.plates ? [['ΦΟΡΤΗΓΟ', h.plates, 1]] : [], h.pdriver ? [['ΟΔΗΓΟΣ', h.pdriver]] : [])
+      : [['ΟΔΗΓΟΣ', h.driver], ['ΦΟΡΤΗΓΟ', h.truck, 1], ['ΡΥΜΟΥΛΚΑ', h.trailer, 1]])
       .concat(h.segment ? [['ΤΜΗΜΑ', h.segment], ['ΣΗΜΕΙΟ ΑΛΛΑΓΗΣ', h.change]] : [['ΚΥΚΛΟΣ', _dash(m.cycleNo)], ['ΦΟΡΤΩΣΗ ΒΕΡΟΙΑ', h.veroia]]);
     // circle 20 + 8 to the card (H5 2128:7767, approved 25/10 over the 10 of 2011:11030): one column for every row
     const COLS = '<colgroup><col style="width:28px"><col></colgroup>';
@@ -293,7 +300,7 @@
       + `<span>☐ Παλέτες μετρημένες (${_palU(chk.pallets, chk.palUnk)})</span><span>☐ CMR υπογεγραμμένα</span></div>`
       + '<div class="s-sp"></div>'
       + '<div class="s-sig"><div><b>PETRAS GROUP</b><span>ΚΙΝΗΣΗ · ΠΑΡΑΔΟΣΗ ΦΥΛΛΟΥ</span><small>Υπογραφή & ημερομηνία</small></div>'
-      + `<div><b>${_esc(h.partner || h.driver || '—')}</b><span>ΟΔΗΓΟΣ · ΠΑΡΑΛΑΒΗ</span><small>Υπογραφή & ημερομηνία</small></div></div></div>`;
+      + `<div><b>${_esc(h.pdriver || h.partner || h.driver || '—')}</b><span>ΟΔΗΓΟΣ · ΠΑΡΑΛΑΒΗ</span><small>Υπογραφή & ημερομηνία</small></div></div></div>`;
   }
 
   // ── the browser side ───────────────────────────────────────────────────────────────────────────────────────
