@@ -17,6 +17,12 @@ compatibility_flags = ["nodejs_compat"]
 # κανένα deploy να μην το απενεργοποιήσει.
 workers_dev = true
 
+# Πριν από κάθε `wrangler deploy` (ValueDriven 26/11/2026): το tools/predeploy-check.mjs σταματά το deploy όταν
+# το branch δεν έχει μέσα το origin/main (κανόνας 2 των «Τρεις κανόνες μίας πηγής») ή όταν ο φρουρός αποτυγχάνει
+# με τις σημαίες του guard-flags.txt. Το `wrangler dev` το προσπερνά, το `wrangler rollback` δεν το τρέχει.
+[build]
+command = "node tools/predeploy-check.mjs"
+
 # Non-secret vars — πιστή αντιγραφή των τρεχόντων bindings (CF API, 10/8).
 # Το wrangler deploy τα ξαναγράφει· αν προστεθεί var στο dashboard χωρίς να
 # μπει εδώ, θα χαθεί στο επόμενο deploy.

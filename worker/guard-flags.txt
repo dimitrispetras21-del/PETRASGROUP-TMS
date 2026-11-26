@@ -1,0 +1,4 @@
+# The worker-guard flags of the Worker on main, one line. tools/predeploy-check.mjs passes them to the guard before
+# every wrangler deploy, and CI (worker/test/guard-flags.test.mjs) checks that main's source passes with them.
+# A PR that adds a guard flag adds it here too, in the guard's order.
+--plan 2 --handover 1 --f3 1 --f5 1 --edit 1 --invoiced 1 --rate2 1 --self 1 --road 1 --wchk 1 --dkv 1 --pnlp 1 --pmiss 1 --ifs 1 --pnl 1 --plain 1 --seq 1 --chg 1
