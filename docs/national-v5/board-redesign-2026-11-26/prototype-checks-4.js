@@ -87,6 +87,7 @@ const { chromium } = require('playwright'); const path = require('path');
   m1 = await say('HMA 4102', 'a', '22 ΑΡΓΟΥΣ ΑΡΓΟΣ'); ok(m1.includes('δεν είναι πελάτης') && await tot() === T1, 'a word that is not a client does not become an order'); await wipe();
   m1 = await say('HMA 4102', 'a', '330 ΑΡΓΟΣ'); ok(m1.includes('330 παλέτες') && await tot() === T1, '330 before a place is not a price'); await wipe();
   m1 = await say('HMA 4102', 'a', '22 ΠΑΛ'); ok(m1.includes('τι είναι') , 'a line that says nothing gets an answer, not silence'); await wipe();
+  m1 = await say('HMA 4102', 'a', '6814 Άργος'); ok(m1.includes('-6814') && !m1.includes('παλέτες;'), 'a line that starts with the reference of a waiting load finds it'); await p.keyboard.press('Backspace'); await wipe();
   const rd3 = await p.evaluate(() => window.__pz.read('22 ΑΡΓΟΣ (6814) // 22 + 5 ΤΡΙΠΟΛΗ (9200)'));
   ok(rd3.list.length === 2 && rd3.total === 22, 'what he writes after his total is still read');
   // the «all» proposal after loads moved between lines without a truck

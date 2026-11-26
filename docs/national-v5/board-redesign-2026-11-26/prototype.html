@@ -260,7 +260,7 @@ function parse(t,refs){ var o={q:null,refs:[],price:0,words:[],dest:[]}, m, lead
   t=t.replace(/\(([^)]*)\)/g,function(_,inn){ (inn.match(/\d{3,4}/g)||[]).forEach(function(x){o.refs.push(x)}); return ' '; });
   t=t.replace(/(^|\s)-\s?(\d{3,4})(?!\d)/g,function(_,a,x){ o.refs.push(x); return ' '; });
   m=t.match(new RegExp('^\\s*(\\d{1,2})(?!\\d)\\s*(ΠΑΛ[^\\s]*|PAL[^\\s]*|[ΧXχx](?!['+LET+']))?','i')); if(m){ o.q=+m[1]; t=t.slice(m[0].length); }
-  if(zero) o.bad='0 παλέτες;'; else if((lead&&o.refs.length)||lead2) o.bad=(lead||lead2)[1]+' παλέτες;';
+  if(zero) o.bad='0 παλέτες;'; else if((lead&&o.refs.length)||(lead2&&!refs.some(function(r){return r.slice(-lead2[1].length)===lead2[1]}))) o.bad=(lead||lead2)[1]+' παλέτες;';
   var gia=false; t.split(/\s+/).filter(Boolean).forEach(function(w,i,all){
     if(/^\d{3,4}$/.test(w)){ if(refs.some(function(r){return r.slice(-w.length)===w})) o.refs.push(w);
       else if(w.length===3&&!o.price) o.price=+w; else o.bad='«'+w+'» δεν περιμένει · αν είναι τιμή γράψε '+w+'€'; }
