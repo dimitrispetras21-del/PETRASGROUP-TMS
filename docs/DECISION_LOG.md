@@ -6351,3 +6351,11 @@ SELECT μετά την εκτέλεση: #525 και #528 στο RT-1240 (closed
 **Εναλλακτικές:** κατάλογος οχημάτων και οδηγών ανά συνεργάτη· ο owner το απέρριψε («Yes, on the trip»). Κείμενο στο σημείωμα του δρομολογίου· απορρίφθηκε, γιατί δεν φαίνεται στη γραμμή και δεν ψάχνεται.
 **Απόδειξη:** `tms-auditor/test/plan-115.test.mjs` 10/10 σε αντίγραφο PGlite, που κρατά τα ζωντανά md5 της 25/11 (dry run, εκτέλεση, αρνήσεις, το κείμενο ακολουθεί την εταιρεία, επαναφορά). `tests/sql-115-drafts.test.js`, `tests/wn5-partner-plates.test.js`, rig `wn5-assign-rig.js partner_text`.
 **Ποιος:** owner (25/11, «Yes, on the trip»), agent (υλοποίηση). Εκτέλεση της 115: owner, μετά τις 15:00.
+
+### 2026-11-26 · 114 και 115 εκτελέστηκαν (owner), τα αρχεία βγαίνουν από το `drafts/`
+
+**Επιλογή:** ο owner έτρεξε στις 26/11 το πρωί, μέσα σε ώρες λειτουργίας με δική του απόφαση («θα τα κάνουμε όλα τώρα»), τη σειρά dry run → αρχείο → verify, πρώτα την 114 και μετά την 115. Τα δέκα `.sql` ανεβαίνουν στο `worker/migrations/` (κανόνας 5)· οι builders μένουν στο `drafts/tools/`, όπως για τις προηγούμενες.
+**Απόδειξη (μόνο SELECT, πριν και μετά):** πριν, τα md5 της βάσης ήταν ακριβώς τα «πριν» και των δύο. 114 dry run: `split a43e5db0…, problem 9f2a79bd…, board 810f1103…, view ac9c5c6d…`, χωρίς ίχνος μετά· verify: `114 in place`, worker_execute true, 0 / 0 / 0· 33 από 33 γραμμές αναμονής της εβδομάδας με `parent_piece_id`. 115 dry run: `columns 2, checks 2, trigger 1, helper 1, upd 23d63e24…, cre b61a475b…, brd ae355c60…, B-54 67 of 67`, χωρίς ίχνος μετά· verify: όλες οι 9 στήλες true· 22 από 22 δρομολόγια της εβδομάδας με `partner_plates` / `partner_driver`.
+**Τι μένει να μετρηθεί:** καμία γραμμή ακόμη με πινακίδα / οδηγό συνεργάτη (0) ή με σπάσιμο στη φόρτωση (0). Στην πρώτη πραγματική χρήση: `SELECT … FROM ct_round_trips WHERE partner_plates IS NOT NULL OR partner_driver IS NOT NULL` και, για την 114, άθροισμα μερών = παλέτες του γονέα.
+**Επαναφορά:** πρώτα το `115_rt_partner_plates_rollback`, μετά το `114_plan_split_at_loading_rollback` (το καθένα με το dry run του πρώτα).
+**Ποιος:** owner (εκτέλεση), agent (έλεγχοι SELECT, μεταφορά αρχείων).
