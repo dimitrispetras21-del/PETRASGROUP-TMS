@@ -704,9 +704,15 @@ const OrdersWeekView = (() => {
     if (tid || did) {
       const t = tid ? getRefTrucks().find(x => x.id === tid) : null;
       const d = did ? getRefDrivers().find(x => x.id === did) : null;
-      const plate = (t && t.fields['License Plate']) || '—';
+      // «truck · trailer», driver under it: the one way the app writes an own-fleet assignment (Nick 16/10, Q73,
+      // OrdersCommon.assignOf). The owner 27/11: «Καλό είναι να φαίνεται και ο θάλαμος». The group key stays the
+      // truck, so a trailer swap does not split a truck's rows.
+      const rid = first(f['Trailer']);
+      const tr = rid ? getRefTrailers().find(x => x.id === rid) : null;
+      const truck = (t && t.fields['License Plate']) || '—';
+      const plate = [truck, tr && tr.fields['License Plate']].filter(Boolean).join(' · ');
       const who = String((d && d.fields['Full Name']) || '').trim();
-      return { key: 't:' + plate, kind: 'own', plate, who, text: [plate, who].filter(Boolean).join(' · ') };
+      return { key: 't:' + truck, kind: 'own', plate, who, text: [plate, who].filter(Boolean).join(' · ') };
     }
     const st = f['Status'];
     // A delivered/invoiced order with no vehicle written is history, not work.
@@ -725,8 +731,9 @@ const OrdersWeekView = (() => {
       const name = (c.partner || 'συνεργάτης') + more;
       return { key: 'p:' + name, kind: 'partner', plate: '', who: name, text: name };
     }
-    const plate = c.truck || '—', who = String(c.driver || '').trim() + more;
-    return { key: 't:' + plate, kind: 'own', plate, who, text: [plate, who].filter(Boolean).join(' · ') };
+    const truck = c.truck || '—', who = String(c.driver || '').trim() + more;
+    const plate = [truck, c.trailer].filter(Boolean).join(' · ');   // as vehicleOf (owner 27/11: the trailer too)
+    return { key: 't:' + truck, kind: 'own', plate, who, text: [plate, who].filter(Boolean).join(' · ') };
   }
 
   // Ends of an order as the frame draws them: first loading and first delivery,
@@ -885,7 +892,7 @@ const OrdersWeekView = (() => {
   // Status: vehicleOf reads it (a delivered load without a vehicle is «—»,
   // not «Προς ανάθεση»).
   const NL_FIELDS = ['Source National Order', 'Source Order', 'Source Type', 'Matched Load', 'Direction',
-    'Truck', 'Driver', 'Partner', 'Partner Truck Plates', 'Status'];
+    'Truck', 'Trailer', 'Driver', 'Partner', 'Partner Truck Plates', 'Status'];
   async function _natLoads(weekNatl) {
     const isRec = id => typeof id === 'string' && /^rec[A-Za-z0-9]{1,32}$/.test(id);
     try {
