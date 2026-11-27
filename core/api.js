@@ -92,10 +92,12 @@ function _isOnline() { return navigator.onLine; }
 // (an order arrived without its stops) and skipped the browser's sync chain — all seen on a local copy 13/10/2026.
 // Now a save without a network is refused at once and said; nothing is written, and the caller's form stays open.
 // What a browser queued before this change is still sent by _flushOfflineQueue below, so nothing stored is lost.
-function _offlineRefusal(message) {
-  const e = new Error(message || 'Δεν υπάρχει σύνδεση: δεν αποθηκεύτηκε τίποτα. Ξαναπάτα αποθήκευση όταν επανέλθει το internet.');
+// It speaks for this one request only: in a multi-step save an earlier step may have been written, and the caller
+// says that part (review 27/11). opts.quiet: the caller reports the failure on its own line, no toast on top.
+function _offlineRefusal(message, opts) {
+  const e = new Error(message || 'Δεν υπάρχει σύνδεση: αυτή η αλλαγή δεν στάλθηκε. Δοκίμασε ξανά όταν επανέλθει το internet.');
   e._noRetry = true; e._kind = 'offline';
-  if (typeof showErrorToast === 'function') showErrorToast(e.message, 'warn', 8000);
+  if (!(opts && opts.quiet === true) && typeof showErrorToast === 'function') showErrorToast(e.message, 'warn', 8000);
   return e;
 }
 
@@ -811,6 +813,7 @@ let _atExpectIgnoredLogged = false;
 async function atPatch(tableId, recId, fields, opts) {
   const _expect = opts && opts.expect ? opts.expect : null;
   const _quiet = !!(opts && opts.quiet === true);
+  if (!_isOnline()) throw _offlineRefusal(null, opts);   // T8: before the audit line, which records sent writes
   _auditLog('PATCH', tableId, recId, fields);
   // Capture pre-state for undo (from cache only — no extra fetch)
   let _undoPrev = null;
@@ -836,7 +839,6 @@ async function atPatch(tableId, recId, fields, opts) {
       console.warn('[api] undo buffer capture failed:', e && e.message);
     }
   }
-  if (!_isOnline()) throw _offlineRefusal();
   const res = await _enqueue(() => _atRetry((_r) => _fetchWithTimeout(_apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}`), {
     method: 'PATCH',
     headers: _apiHeaders('PATCH', _r),
@@ -897,8 +899,8 @@ async function atPatch(tableId, recId, fields, opts) {
 // flag spans awaits, so a detached sync holding it would also swallow the
 // user's own concurrent action (§4 #9 review, 4/10/2026).
 async function atCreate(tableId, fields, opts) {
+  if (!_isOnline()) throw _offlineRefusal(null, opts);
   _auditLog('CREATE', tableId, null, fields);
-  if (!_isOnline()) throw _offlineRefusal();
   const res = await _enqueue(() => _atRetry((_r) => _fetchWithTimeout(_apiUrl(`/v0/${AT_BASE}/${tableId}`), {
     method: 'POST',
     headers: _apiHeaders('POST', _r),
@@ -928,15 +930,15 @@ async function atCreate(tableId, fields, opts) {
  * @returns {Promise<{id:string, deleted:boolean}>} Deletion confirmation
  */
 async function atDelete(tableId, recId, opts) {
-  _auditLog('DELETE', tableId, recId, null);
   // opts.confirmToken: the token of a 428 preview (F5 Ε19), sent back as the user confirmed it
   const q = opts && opts.confirmToken ? '?confirm_token=' + encodeURIComponent(opts.confirmToken) : '';
   if (!_isOnline()) {
     // F5 Ε19: an order delete has always said this; since T8 every delete does.
     throw _offlineRefusal(typeof TABLES !== 'undefined' && tableId === TABLES.ORDERS && !q
       ? 'Η διαγραφή παραγγελίας θέλει σύνδεση — δεν έγινε τίποτα· δοκίμασε ξανά όταν επανέλθει το δίκτυο'
-      : 'Δεν υπάρχει σύνδεση: δεν διαγράφηκε τίποτα. Δοκίμασε ξανά όταν επανέλθει το internet.');
+      : 'Δεν υπάρχει σύνδεση: αυτή η διαγραφή δεν στάλθηκε. Δοκίμασε ξανά όταν επανέλθει το internet.', opts);
   }
+  _auditLog('DELETE', tableId, recId, null);
   const res = await _enqueue(() => _atRetry((_r) => _fetchWithTimeout(_apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}${q}`), {
     method: 'DELETE',
     headers: _apiHeaders('DELETE', _r)
@@ -981,6 +983,7 @@ async function atGetOne(tableId, recId) {
  * @returns {Promise<Array<{id:string, fields:Object}>>} Created records
  */
 async function atCreateBatch(tableId, recordsArr) {
+  if (!_isOnline()) throw _offlineRefusal();   // T8: like atCreate / atPatch (order stops are saved this way)
   const results = [];
   for (let i = 0; i < recordsArr.length; i += 10) {
     const batch = recordsArr.slice(i, i + 10);
@@ -1027,6 +1030,7 @@ async function atCreateBatch(tableId, recordsArr) {
  * @returns {Promise<Array<{id:string, fields:Object}>>} Updated records
  */
 async function atPatchBatch(tableId, recordsArr) {
+  if (!_isOnline()) throw _offlineRefusal();   // T8: like atCreate / atPatch (order stops are saved this way)
   const results = [];
   for (let i = 0; i < recordsArr.length; i += 10) {
     const batch = recordsArr.slice(i, i + 10);
@@ -1462,6 +1466,8 @@ async function atSoftDelete(tableId, recordId, opts) {
   // for 60 s, and one click created a duplicate live record next to the one
   // that was never deleted (impact map 4/10 DL-04; pre-existing for every
   // order, made routine by migration 057's designed refusals).
+  // T8: refused before the read, so an offline delete shows one message, not a read error first.
+  if (!_isOnline()) return atDelete(tableId, recordId, opts);
   let recLabel = '', rec = null, readErr = null;
   try { rec = await atGetOne(tableId, recordId); } catch(e) { readErr = e; }
   const result = await atDelete(tableId, recordId, opts);   // throws on refusal → no trash, no undo

@@ -171,3 +171,32 @@ for (const [what, call] of [['PATCH', "atPatch('tblO', 'recP1', { Status: 'In Tr
     assert.ok(s.toasts.some((t) => /^warn: .*σύνδεση/.test(t)), s.toasts.join(' | '));
   });
 }
+
+// T8 review 27/11: the batches refuse too (order stops are saved through them); quiet means no toast on top of
+// the caller's own line; an offline soft delete refuses before its read, so the user gets one message.
+test('T8 offline batches refused, nothing sent', async () => {
+  const s = sandbox(() => json(200, { records: [] }));
+  s.ctx.navigator.onLine = false;
+  for (const call of ["atCreateBatch('tblS', [{ fields: { N: 1 } }])", "atPatchBatch('tblS', [{ id: 'recS1', fields: { N: 2 } }])"]) {
+    const k = await s.run(`${call}.then(() => 'sent', (e) => e._kind)`);
+    assert.strictEqual(k, 'offline', call);
+  }
+  assert.strictEqual(s.calls.filter((c) => c.url.includes('/v0/')).length, 0);
+});
+
+test('T8 offline with opts.quiet: refused, no toast (the caller says it)', async () => {
+  const s = sandbox(() => json(200, {}));
+  s.ctx.navigator.onLine = false;
+  const k = await s.run("atPatch('tblO', 'recP1', { Status: 'X' }, { quiet: true }).then(() => 'sent', (e) => e._kind)");
+  assert.strictEqual(k, 'offline');
+  assert.strictEqual(s.toasts.length, 0, s.toasts.join(' | '));
+});
+
+test('T8 offline soft delete: refused before any read, one warn message', async () => {
+  const s = sandbox(() => json(200, { id: 'recT1', fields: {} }));
+  s.ctx.navigator.onLine = false;
+  const k = await s.run("atSoftDelete('tblT', 'recT1').then(() => 'deleted', (e) => e._kind)");
+  assert.strictEqual(k, 'offline');
+  assert.strictEqual(s.calls.filter((c) => c.url.includes('/v0/')).length, 0, 'no read, no delete');
+  assert.strictEqual(s.toasts.length, 1, s.toasts.join(' | '));
+});
