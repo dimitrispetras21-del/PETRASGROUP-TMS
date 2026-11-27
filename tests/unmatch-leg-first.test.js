@@ -89,7 +89,7 @@ function world({ imports = ['I'], exportsOnRt = ['E'], failLeg = null, lookupThr
     // «after» lookup (_wiRtOf): the order itself, then trips in a date window
     atGetOne: async (_t, id) => ({ id, fields: Object.assign(noOrderNo ? {} : { 'Order No': pgOf(id) }, orders[id] && orders[id].truck ? { Truck: [orders[id].truck] } : {}, exportsOnRt.includes(id) ? { 'Matched Import ID': imports[0] } : {}, { 'Loading DateTime': '2026-09-28T06:00:00Z', 'Delivery DateTime': '2026-09-30T06:00:00Z' }) }),
     plFetch: async (url) => { rtQueries.push(url); if (lookupThrows) throw new Error('network');
-      return { records: [{ id: 1, code: 'RT-1', status: rtStatus, ct_rt_legs: [...legs].map(o => ({ order_id: pgOf(o) })) }] }; },
+      return { records: [{ id: 1, code: 'RT-1', status: rtStatus, ct_rt_legs: [...legs].map(o => ({ order_id: pgOf(o), direction: exportsOnRt.includes(o) ? 'EXPORT' : 'IMPORT' })) }] }; },
     _wiRtLegDelete: async (_rtId, pg) => { const id = typeof pg === 'number' ? Object.keys(orders)[pg - 1] : pg;
       if (failLeg === id) return { ok: false, status: 409, error: 'closed' }; legs.delete(id); return { ok: true, status: 200 }; },
     rtOnImportUnmatched: async (_exp, imp) => { legs.delete(imp); },            // the «before» trailing pass
@@ -316,4 +316,32 @@ test('T195 the import rides another export\'s trip → its leg stays, its vehicl
   await new Promise(r => setTimeout(r, 10));
   assert.strictEqual(w.orders.I.truck, 'T1', 'the import keeps its vehicle');
   assert.ok(w.log.some(x => x.error && /άλλης εξαγωγής/.test(x.error)), JSON.stringify(w.log));
+});
+
+// Review 27/11: a rota export (or an export-group member off this week's board) rides the row's OWN trip;
+// the unmatch must still take the import off it.
+test('T195 another export on the row\'s OWN trip (rota): the import still leaves and is cleared', async () => {
+  const w = world();
+  w.ctx.plFetch = async () => ({ records: [{ id: 1, code: 'RT-1', status: 'planned', ct_rt_legs: [
+    { order_id: 1, direction: 'EXPORT' }, { order_id: 99, direction: 'EXPORT' }, { order_id: 2, direction: 'IMPORT' }] }] });
+  await w.ctx._wiRemoveImport(1);
+  await new Promise(r => setTimeout(r, 10));
+  assert.strictEqual(w.orders.I.truck, null, 'the import is cleared: ' + JSON.stringify(w.log));
+  assert.ok(!w.log.some(x => x.error && /άλλης εξαγωγής/.test(x.error)));
+});
+
+test('T195 the export points at ANOTHER member of the import group: the unmatch is not refused', async () => {
+  const w = world({ imports: ['I', 'I2'] });
+  const base = w.ctx.atGetOne;
+  w.ctx.atGetOne = async (t, id) => { const r = await base(t, id); if (id === 'E') r.fields['Matched Import ID'] = 'I2'; return r; };
+  const res = await w.ctx._wiRemoveImport(1);
+  assert.notStrictEqual(res, null, 'refused: ' + JSON.stringify(w.log));
+  assert.ok(w.log.some(x => x.id === 'E'), 'the export pointer was cleared');
+});
+
+test('T195 a second «×» while the first reads the server: refused, one unmatch only', async () => {
+  const w = world();
+  const [a, b] = await Promise.all([w.ctx._wiRemoveImport(1), w.ctx._wiRemoveImport(1)]);
+  assert.ok(a === null || b === null, 'one of the two calls must stop');
+  assert.strictEqual(w.log.filter(x => x.id === 'E').length, 1, 'the export was written once: ' + JSON.stringify(w.log));
 });

@@ -3289,16 +3289,19 @@ async function _wiSaveImportMatch(rowId,impId){
   // Exports of this row (a groupage row) and of the row the grip moves the import FROM are the board's own.
   {
     const own=new Set([...(row.orderIds||[row.orderId])]);
-    const fromRow=WINTL.rows.find(r=>r.type==='export'&&r.id!==rowId&&r.importId===matchImpId);
-    if(fromRow) (fromRow.orderIds||[fromRow.orderId]).forEach(id=>own.add(id));
     const ids=[...new Set([impId,...(giGroup.members||[])])];
+    // by membership: an export's pointer may name any member of the group, not only the lead the grip drags
+    const fromRow=WINTL.rows.find(r=>r.type==='export'&&r.id!==rowId&&r.importId&&ids.includes(r.importId));
+    if(fromRow) (fromRow.orderIds||[fromRow.orderId]).forEach(id=>own.add(id));
     let pts=null;
     try{ pts=await atGetAll(TABLES.ORDERS,{filterByFormula:ids.length>1?`OR(${ids.map(id=>`{Matched Import ID}='${id}'`).join(',')})`:`{Matched Import ID}='${ids[0]}'`,fields:['Matched Import ID','Order No']},false); }catch(e){ pts=null; }
     if(!pts){ _wiRefuse('Δεν διαβάστηκε αν η εισαγωγή είναι ήδη ταιριασμένη — δεν άλλαξε τίποτα· δοκίμασε ξανά','match refused'); return; }
     const foreign=pts.filter(p=>!own.has(p.id));
     if(foreign.length){
       _wiRefuse('Η εισαγωγή είναι ήδη ταιριασμένη με άλλη εξαγωγή (#'+foreign.map(p=>p.fields?.['Order No']||p.id).join(', #')+') — πρώτα «Αφαίρεση ταιριάσματος» εκεί','match race');
-      await renderWeeklyIntl();
+      // reload only when the board does not show that export with this import (RC1 8/10: no spinner for nothing)
+      const shown=WINTL.rows.some(r=>r.type==='export'&&r.importId&&ids.includes(r.importId)&&(r.orderIds||[r.orderId]).some(id=>foreign.some(p=>p.id===id)));
+      if(!shown) await renderWeeklyIntl();
       return;
     }
   }
@@ -3368,7 +3371,8 @@ async function _wiSaveImportMatch(rowId,impId){
   // assignment cleanup + RT leg detach) before this function's own writes
   // begin. Not reachable from the ordinary drag — an already-matched import
   // never renders its own row to drag FROM — only from the new grip.
-  const oldExpRow=WINTL.rows.find(r=>r.type==='export'&&r.id!==rowId&&r.importId===matchImpId);
+  // by membership (review 27/11): the old export's pointer may name a member that is not the group's lead
+  const oldExpRow=WINTL.rows.find(r=>r.type==='export'&&r.id!==rowId&&r.importId&&[matchImpId,...(giGroup.members||[])].includes(r.importId));
   // v4 (§g.4): the first export PATCH below carries _expect, so it CAN answer
   // 409 — and on the grip path that answer would come after the old export's
   // unmatch was already written, leaving the group matched to nothing. The
@@ -3611,7 +3615,10 @@ async function _wiRemoveImport(rowId,opts){
   // else re-matched still named the old import (#759 → #770 on 20/11, 2½ h old): the unmatch wrote an export
   // pointer that was already empty and then cleared an import that by then travelled with export #750, off its
   // round trip. Nothing is written unless an export of this row still points at this import (or its group).
-  const live=await _wiUnmatchLiveCheck(row.orderIds||[row.orderId],impId);
+  if(row._wiUnmatching) return null;   // a second «×» while the first one reads the server
+  row._wiUnmatching=true;
+  let live;
+  try{ live=await _wiUnmatchLiveCheck(row.orderIds||[row.orderId],impId); }finally{ row._wiUnmatching=false; }
   if(!live.ok){
     _wiRefuse(live.msg,'unmatch race');
     if(live.stale&&typeof renderWeeklyIntl==='function') await renderWeeklyIntl();
@@ -3709,12 +3716,13 @@ async function _wiRemoveImport(rowId,opts){
 // refuses: an unmatch that cannot see the server writes nothing.
 async function _wiUnmatchLiveCheck(orderIds,impId){
   let members=[impId];
-  try{ members=(await _wiGiGroup(impId)).members||[impId]; }catch(e){ members=[impId]; }
+  try{ members=(await _wiGiGroup(impId,null,true)).members||[impId]; }catch(e){ members=[impId]; }   // cancelled members too
   const pgs=[]; let points=false;
   for(const id of (orderIds||[]).filter(Boolean)){
     let rec=null;
     try{ rec=await atGetOne(TABLES.ORDERS,id); }catch(e){ rec=null; }
-    if(!rec) return {ok:false,stale:false,msg:'Η εξαγωγή δεν διαβάστηκε — δεν άλλαξε τίποτα· δοκίμασε ξανά'};
+    // a deleted export answers 404 here: the board reloads, so a retry does not fail the same way for ever
+    if(!rec) return {ok:false,stale:true,msg:'Η εξαγωγή δεν διαβάστηκε — δεν άλλαξε τίποτα· ανανέωση…'};
     const f=rec.fields||{};
     if(Number(f['Order No'])) pgs.push(Number(f['Order No']));
     if(members.includes(String(f['Matched Import ID']||''))) points=true;
@@ -5280,7 +5288,11 @@ async function _wiRtLeave(orderId,opts){
   // export stays where it is: on 20/11 the unmatch of #700 took #770 off #759's trip (09:51 UTC), and the one of
   // #759 took it off #750's (12:28 UTC).
   if(opts&&Array.isArray(opts.exportPgs)){
-    const other=(at.rt.ct_rt_legs||[]).filter(l=>String(l.direction||'').toUpperCase()==='EXPORT'&&Number(l.order_id)!==at.pg&&!opts.exportPgs.includes(Number(l.order_id)));
+    // Only a trip that holds NONE of this row's exports and does hold another export is someone else's: a rota leg,
+    // a relay or an export-group member off this week's board rides the row's own trip (review 27/11).
+    const legs=at.rt.ct_rt_legs||[], isExp=l=>String(l.direction||'').toUpperCase()==='EXPORT';
+    const mine=legs.some(l=>isExp(l)&&opts.exportPgs.includes(Number(l.order_id)));
+    const other=mine?[]:legs.filter(l=>isExp(l)&&Number(l.order_id)!==at.pg);
     if(other.length) return {ok:false,status:'other',msg:'είναι στο '+(await _wiRtTxt(at.rt))+' άλλης εξαγωγής (#'+other.map(l=>l.order_id).join(', #')+')'};
   }
   const del=await _wiRtLegDelete(at.rt.id,at.pg).catch(err=>({ok:false,status:0,error:err&&err.message}));
@@ -8040,7 +8052,7 @@ async function _wiStockReturnLoneRun(pid,expOid,expRowId){
     // after the leg is off — never the vehicle first (RT-1193, 30/9).
     if(hasVeh){
       if(await _wiExecutingLive(pid)) throw new Error('το κομμάτι ξεκίνησε στο μεταξύ — κρατά όχημα και γύρο');
-      const leave=await _wiRtLeave(pid);
+      const leave=await _wiRtLeave(pid,{exportPgs:[Number(exp.fields?.['Order No'])].filter(Boolean)});   // T195
       if(!leave.ok) throw new Error(leave.msg+' — κρατά όχημα');
     }
     const patch=hasVeh?{'Truck':[],'Trailer':[],'Driver':[],'Status':'Pending'}:{};

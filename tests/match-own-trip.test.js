@@ -238,3 +238,23 @@ test('T195 the pointer check cannot be read: refused, nothing written', async ()
   assert.ok(!w.log.some(x => x.patch));
   assert.ok(w.log.some(x => x.refuse && /Δεν διαβάστηκε αν η εισαγωγή είναι ήδη ταιριασμένη/.test(x.refuse)));
 });
+
+test('T195 the pointer check asks for every member of the import group', async () => {
+  const w = world();
+  w.ctx._wiGiGroup = async () => ({ lead: 'I', members: ['I', 'I2'] });
+  w.ctx.atGetAll = async (_t, o) => (/'I2'/.test(o.filterByFormula) ? [{ id: 'X', fields: { 'Matched Import ID': 'I2', 'Order No': 78 } }] : []);
+  await w.ctx._wiSaveImportMatch(1, 'I');
+  assert.ok(!w.log.some(x => x.patch), JSON.stringify(w.log));
+  assert.ok(w.log.some(x => x.refuse && /#78/.test(x.refuse)));
+});
+
+test('T195 the grip moves the import from another row: that row is the board\'s own, and a refused unmatch there stops the move', async () => {
+  const w = world();
+  w.ctx.WINTL.rows.push({ id: 3, type: 'export', orderId: 'E2', orderIds: ['E2'], importId: 'I', truckId: 'T9' });
+  w.ctx.atGetAll = async () => [{ id: 'E2', fields: { 'Matched Import ID': 'I', 'Order No': 12 } }];
+  let removed = 0; w.ctx._wiRemoveImport = async () => { removed++; return null; };
+  await w.ctx._wiSaveImportMatch(1, 'I');
+  assert.ok(!w.log.some(x => x.refuse && /ήδη ταιριασμένη/.test(x.refuse)), 'the source row is not «another export»: ' + JSON.stringify(w.log));
+  assert.strictEqual(removed, 1, 'the old match was asked to come off');
+  assert.ok(!w.log.some(x => x.patch), 'null = nothing written, the move stops');
+});
