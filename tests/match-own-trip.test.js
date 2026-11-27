@@ -22,7 +22,7 @@ const WI = fs.readFileSync(process.env.WI_SRC || path.join(__dirname, '..', 'mod
 const grab = (re, name) => { const m = WI.match(re); if (!m) throw new Error(name + ' not found'); return m[0]; };
 const wiSrc = [
   grab(/async function _wiRtOf\(orderId\)\{[\s\S]*?\n\}\n/, '_wiRtOf'),
-  grab(/async function _wiRtLeave\(orderId\)\{[\s\S]*?\n\}\n/, '_wiRtLeave'),
+  grab(/async function _wiRtLeave\(orderId(?:,opts)?\)\{[\s\S]*?\n\}\n/, '_wiRtLeave'),
   grab(/async function _wiOwnRtFree\(recs\)\{[\s\S]*?\n\}\n/, '_wiOwnRtFree'),
   grab(/function _wiInhOf\(row\)\{[\s\S]*?\n\}\n/, '_wiInhOf'),
   grab(/function _wiRecOf\(id\)\{[^\n]*\n/, '_wiRecOf'),
@@ -68,6 +68,9 @@ function world({ ownLedger = null, costs = 'none', exportTruck = 'T1', role = 'o
     getLinkedId: v => (Array.isArray(v) ? v[0] || null : v || null),
     LoadGroup: { sameLoad: () => false },
     atGetOne: async (_t, id) => recOf(id),
+    // T195 (27/11): the match asks which exports already point at the import
+    atGetAll: async (_t, o) => { const ids = (String(o.filterByFormula).match(/'([^']+)'/g) || []).map(x => x.slice(1, -1));
+      return Object.keys(orders).filter(k => ids.includes(orders[k].matched)).map(recOf); },
     atSafePatch: async (_t, id, f) => {
       log.push({ patch: id, f: Object.keys(f) });
       if (failExport && id === 'E') return { error: { message: 'rig: export write failed' } };
@@ -215,4 +218,23 @@ test('export with NO vehicle (owner 8/11 #10): only the match is written, the im
   assert.ok(!w.log.some(x => x.get === '/costs/lines'), 'trips were judged for a match that moves none');
   assert.strictEqual(w.orders.I.truck, 'T14');
   assert.strictEqual(w.liveTripOf('I'), w.trips[2]);
+});
+
+// T195 (27/11/2026): the import-side lock read «Matched Export ID», which the Worker does not serve, so a second
+// export could match an import that already rode with another (#700 and #759 on #770, 19/11).
+test('T195 an import another export already points at: refused, nothing written, the board reloads', async () => {
+  const w = world();
+  w.ctx.atGetAll = async () => [{ id: 'X', fields: { 'Matched Import ID': 'I', 'Order No': 77 } }];
+  await w.ctx._wiSaveImportMatch(1, 'I');
+  assert.ok(!w.log.some(x => x.patch), 'no write: ' + JSON.stringify(w.log));
+  assert.ok(w.log.some(x => x.refuse && /ήδη ταιριασμένη με άλλη εξαγωγή \(#77\)/.test(x.refuse)), JSON.stringify(w.log));
+  assert.ok(w.log.some(x => x.reload));
+});
+
+test('T195 the pointer check cannot be read: refused, nothing written', async () => {
+  const w = world();
+  w.ctx.atGetAll = async () => { throw new Error('network'); };
+  await w.ctx._wiSaveImportMatch(1, 'I');
+  assert.ok(!w.log.some(x => x.patch));
+  assert.ok(w.log.some(x => x.refuse && /Δεν διαβάστηκε αν η εισαγωγή είναι ήδη ταιριασμένη/.test(x.refuse)));
 });

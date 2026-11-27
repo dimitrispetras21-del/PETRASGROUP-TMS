@@ -24,7 +24,9 @@ const WI = fs.readFileSync(process.env.WI_SRC || path.join(__dirname, '..', 'mod
 const grab = (re, name, optional) => { const m = WI.match(re); if (!m && !optional) throw new Error(name + ' not found'); return m ? m[0] : ''; };
 const wiSrc = [
   grab(/async function _wiRtOf\(orderId\)\{[\s\S]*?\n\}\n/, '_wiRtOf', true),       // absent in the «before» copy
-  grab(/async function _wiRtLeave\(orderId\)\{[\s\S]*?\n\}\n/, '_wiRtLeave', true), // absent in the «before» copy
+  grab(/async function _wiRtLeave\(orderId(?:,opts)?\)\{[\s\S]*?\n\}\n/, '_wiRtLeave', true), // absent in the «before» copy
+  // T195 (27/11): the unmatch reads its exports live first (absent in older copies)
+  grab(/async function _wiUnmatchLiveCheck\(orderIds,impId\)\{[\s\S]*?\n\}\n/, '_wiUnmatchLiveCheck', true),
   // fix/wi-assign-never-locks (4/10): _wiCancelGroupMember reads the live status
   // and builds its one confirm through these (absent in older copies)
   grab(/const WI_EXECUTING=\[[^\]]*\];/, 'WI_EXECUTING', true),
@@ -85,7 +87,7 @@ function world({ imports = ['I'], exportsOnRt = ['E'], failLeg = null, lookupThr
     PlainRef: require(path.join(__dirname, '..', 'core/plain-ref.js')), _fhLocationsMap: {}, escapeHtml: s => String(s),
     rtFindForOrder: async id => { if (lookupThrows) throw new Error('network'); return { pg: id, rt: legs.has(id) ? { id: 1, code: 'RT-1' } : null }; }, // «before» lookup
     // «after» lookup (_wiRtOf): the order itself, then trips in a date window
-    atGetOne: async (_t, id) => ({ id, fields: Object.assign(noOrderNo ? {} : { 'Order No': pgOf(id) }, orders[id] && orders[id].truck ? { Truck: [orders[id].truck] } : {}, { 'Loading DateTime': '2026-09-28T06:00:00Z', 'Delivery DateTime': '2026-09-30T06:00:00Z' }) }),
+    atGetOne: async (_t, id) => ({ id, fields: Object.assign(noOrderNo ? {} : { 'Order No': pgOf(id) }, orders[id] && orders[id].truck ? { Truck: [orders[id].truck] } : {}, exportsOnRt.includes(id) ? { 'Matched Import ID': imports[0] } : {}, { 'Loading DateTime': '2026-09-28T06:00:00Z', 'Delivery DateTime': '2026-09-30T06:00:00Z' }) }),
     plFetch: async (url) => { rtQueries.push(url); if (lookupThrows) throw new Error('network');
       return { records: [{ id: 1, code: 'RT-1', status: rtStatus, ct_rt_legs: [...legs].map(o => ({ order_id: pgOf(o) })) }] }; },
     _wiRtLegDelete: async (_rtId, pg) => { const id = typeof pg === 'number' ? Object.keys(orders)[pg - 1] : pg;
@@ -95,7 +97,7 @@ function world({ imports = ['I'], exportsOnRt = ['E'], failLeg = null, lookupThr
     _wiExecutingLive: async () => false,
     syncOrderDownstream: async () => {},
     confirmAction: async () => true,
-    reportError: (m) => log.push({ error: m }), toast: (m, k) => log.push({ toast: m, k }),
+    reportError: (m) => log.push({ error: m }), toast: (m, k) => log.push({ toast: m, k }), _wiRefuse: (m) => log.push({ refuse: m }),
     _wiPaint() {}, _wiSync() {}, atClearCache() {}, renderWeeklyIntl: async () => {},
     // v4 seam (§g.4): a no-op while v4 is inactive, which is this world.
     _wiDataSet() {},
@@ -267,14 +269,51 @@ test('«Σπάσιμο σκέλους» on a CLOSED trip stops before any leg is
 
 test('lookup: one date only opens the window 60 days back; no date at all clears nothing', async () => {
   const w = world();
-  w.ctx.atGetOne = async (_t, id) => ({ id, fields: { 'Order No': 2, 'Loading DateTime': '2026-09-20T06:00:00Z' } });
+  w.ctx.atGetOne = async (_t, id) => ({ id, fields: { 'Order No': 2, 'Matched Import ID': 'I', 'Loading DateTime': '2026-09-20T06:00:00Z' } });
   await w.ctx._wiRemoveImport(1);
   await new Promise(r => setTimeout(r, 10));
   assert.ok(w.rtQueries.some(q => /overlap=1&from=2026-07-22&to=2026-09-27/.test(q)), w.rtQueries.join(' | '));
   const w2 = world();
-  w2.ctx.atGetOne = async (_t, id) => ({ id, fields: { 'Order No': 2 } });
+  w2.ctx.atGetOne = async (_t, id) => ({ id, fields: { 'Order No': 2, 'Matched Import ID': 'I' } });
   await w2.ctx._wiRemoveImport(1);
   await new Promise(r => setTimeout(r, 10));
   assert.strictEqual(w2.orders.I.truck, 'T1');
   assert.ok(w2.log.some(x => x.error && /δεν έχει ημερομηνίες/.test(x.error)));
+});
+
+// T195 (27/11/2026): on 20/11 a board drawn before kelesmitos re-matched (#759 → #770 moved to #750) unmatched
+// #759 at 12:28 UTC: the export pointer was already empty, and the clear took #770 off #750's trip.
+test('T195 stale board: the export no longer points at the import → refused before ANY write, the board reloads', async () => {
+  const w = world();
+  const base = w.ctx.atGetOne;
+  w.ctx.atGetOne = async (t, id) => { const r = await base(t, id); if (id === 'E') r.fields['Matched Import ID'] = ''; return r; };
+  let reloaded = 0; w.ctx.renderWeeklyIntl = async () => { reloaded++; };
+  const res = await w.ctx._wiRemoveImport(1);
+  assert.strictEqual(res, null, 'null = refused before any write');
+  assert.strictEqual(w.log.filter(x => x.id).length, 0, 'no PATCH at all: ' + JSON.stringify(w.log));
+  assert.strictEqual(w.orders.I.truck, 'T1', 'the import keeps its vehicle');
+  assert.ok(w.log.some(x => x.refuse && /άλλαξε από άλλον χρήστη/.test(x.refuse)), JSON.stringify(w.log));
+  assert.strictEqual(reloaded, 1);
+});
+
+test('T195 the export cannot be read → refused before any write, no reload (nothing known)', async () => {
+  const w = world();
+  w.ctx.atGetOne = async () => { throw new Error('network'); };
+  const res = await w.ctx._wiRemoveImport(1);
+  assert.strictEqual(res, null);
+  assert.strictEqual(w.log.filter(x => x.id).length, 0);
+  assert.ok(w.log.some(x => x.refuse && /δεν διαβάστηκε/.test(x.refuse)));
+});
+
+// 20/11 09:51 UTC: #700 and #759 both pointed at #770, whose leg sat on #759's trip; unmatching #700 took it off.
+test('T195 the import rides another export\'s trip → its leg stays, its vehicle stays, said', async () => {
+  const w = world();
+  w.ctx.plFetch = async () => ({ records: [{ id: 1, code: 'RT-1', status: 'planned', ct_rt_legs: [
+    { order_id: 99, direction: 'EXPORT' },                    // another export's trip
+    { order_id: 2, direction: 'IMPORT' },                     // the import (Order No 2 = I)
+  ] }] });
+  await w.ctx._wiRemoveImport(1);
+  await new Promise(r => setTimeout(r, 10));
+  assert.strictEqual(w.orders.I.truck, 'T1', 'the import keeps its vehicle');
+  assert.ok(w.log.some(x => x.error && /άλλης εξαγωγής/.test(x.error)), JSON.stringify(w.log));
 });

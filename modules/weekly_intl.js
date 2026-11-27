@@ -3000,7 +3000,7 @@ async function _wiUnmatchRow(rowId){
     {title:'Αφαίρεση ταιριάσματος',confirmLabel:'Αφαίρεση'}))) return;
   const grp=_wiImpGroupRowOf(row.importId), expOid=row.orderIds[0], impId=row.importId;
   try{
-    await _wiRemoveImport(rowId);
+    if((await _wiRemoveImport(rowId))===null) return;   // T195: refused before any write, the pieces stay as they are
     let exp=null; try{ exp=await atGetOne(TABLES.ORDERS,expOid); }catch(e){ exp=null; }
     if(exp&&String(exp.fields?.['Matched Import ID']||'')===impId) return;   // the unmatch failed: its own ⚠ says so
     const left=[], kept=[];
@@ -3283,6 +3283,25 @@ async function _wiSaveImportMatch(rowId,impId){
   // never silently onto a wider or narrower set than the server confirms.
   const giGroup = await _wiGiGroup(impId, importRec);
   const matchImpId = giGroup.lead;
+  // T195 (27/11): the import-side lock check above reads a field the Worker does not serve («Matched Export ID»;
+  // an import holds no pointer to its export), so a second export could match an import that already rode with
+  // another (#700 and #759 both on #770, 19/11; #620 and #621 on #598, 30/10). The exports are asked instead.
+  // Exports of this row (a groupage row) and of the row the grip moves the import FROM are the board's own.
+  {
+    const own=new Set([...(row.orderIds||[row.orderId])]);
+    const fromRow=WINTL.rows.find(r=>r.type==='export'&&r.id!==rowId&&r.importId===matchImpId);
+    if(fromRow) (fromRow.orderIds||[fromRow.orderId]).forEach(id=>own.add(id));
+    const ids=[...new Set([impId,...(giGroup.members||[])])];
+    let pts=null;
+    try{ pts=await atGetAll(TABLES.ORDERS,{filterByFormula:ids.length>1?`OR(${ids.map(id=>`{Matched Import ID}='${id}'`).join(',')})`:`{Matched Import ID}='${ids[0]}'`,fields:['Matched Import ID','Order No']},false); }catch(e){ pts=null; }
+    if(!pts){ _wiRefuse('Δεν διαβάστηκε αν η εισαγωγή είναι ήδη ταιριασμένη — δεν άλλαξε τίποτα· δοκίμασε ξανά','match refused'); return; }
+    const foreign=pts.filter(p=>!own.has(p.id));
+    if(foreign.length){
+      _wiRefuse('Η εισαγωγή είναι ήδη ταιριασμένη με άλλη εξαγωγή (#'+foreign.map(p=>p.fields?.['Order No']||p.id).join(', #')+') — πρώτα «Αφαίρεση ταιριάσματος» εκεί','match race');
+      await renderWeeklyIntl();
+      return;
+    }
+  }
   // Φ1: a piece never rides a partner (WI_PIECE_OWN_ONLY, B-05) — a loose
   // piece or a group holding one dropped on a partner export, before any write.
   if(row.partnerId&&(_wiPieceIn([impId,...giGroup.members]).length||(importRec&&_wiIsPiece(importRec.fields)))){
@@ -3588,6 +3607,16 @@ async function _wiRemoveImport(rowId,opts){
   if(!row.importId){ toast('Δεν υπάρχει ταιριασμένη εισαγωγή','warn'); return false; }
   const impId=row.importId;
   const oid0=(row.orderIds&&row.orderIds[0])||row.orderId;   // the slot's order, at the start (P1, _wiSync)
+  // T195 (ValueDriven 27/11/2026): the exports are read LIVE before anything changes. A board drawn before someone
+  // else re-matched still named the old import (#759 → #770 on 20/11, 2½ h old): the unmatch wrote an export
+  // pointer that was already empty and then cleared an import that by then travelled with export #750, off its
+  // round trip. Nothing is written unless an export of this row still points at this import (or its group).
+  const live=await _wiUnmatchLiveCheck(row.orderIds||[row.orderId],impId);
+  if(!live.ok){
+    _wiRefuse(live.msg,'unmatch race');
+    if(live.stale&&typeof renderWeeklyIntl==='function') await renderWeeklyIntl();
+    return null;   // null = refused before any write (callers stop); false = written in part
+  }
   row.importId=null;
 
   // Update import row UI. The match may name ANY member of an import group (A1): the
@@ -3649,7 +3678,7 @@ async function _wiRemoveImport(rowId,opts){
         // decides above that this member is cleared (see _wiRtLeave: the other
         // order wiped the export's truck and the driver's payroll line, 30/9).
         // A failed leg removal leaves this member's assignment untouched.
-        const leave=await _wiRtLeave(memberId);
+        const leave=await _wiRtLeave(memberId,{exportPgs:live.pgs});
         if(!leave.ok){ clearErrors.push(memberId+': '+leave.msg+' — η ανάθεσή του ΔΕΝ καθαρίστηκε'); continue; }
         const clr={
           'Truck':[],'Trailer':[],'Driver':[],'Partner':[],
@@ -3673,6 +3702,25 @@ async function _wiRemoveImport(rowId,opts){
     return clearErrors.length===0;
   }
   return false;
+}
+
+// T195: does an export of this row still point at this import (or a member of its group), read live? Also returns
+// the exports' order numbers, so _wiRtLeave can tell this row's round trip from another export's. A failed read
+// refuses: an unmatch that cannot see the server writes nothing.
+async function _wiUnmatchLiveCheck(orderIds,impId){
+  let members=[impId];
+  try{ members=(await _wiGiGroup(impId)).members||[impId]; }catch(e){ members=[impId]; }
+  const pgs=[]; let points=false;
+  for(const id of (orderIds||[]).filter(Boolean)){
+    let rec=null;
+    try{ rec=await atGetOne(TABLES.ORDERS,id); }catch(e){ rec=null; }
+    if(!rec) return {ok:false,stale:false,msg:'Η εξαγωγή δεν διαβάστηκε — δεν άλλαξε τίποτα· δοκίμασε ξανά'};
+    const f=rec.fields||{};
+    if(Number(f['Order No'])) pgs.push(Number(f['Order No']));
+    if(members.includes(String(f['Matched Import ID']||''))) points=true;
+  }
+  if(!points) return {ok:false,stale:true,msg:'Το ταίριασμα άλλαξε από άλλον χρήστη στο μεταξύ — δεν άλλαξε τίποτα· ανανέωση…'};
+  return {ok:true,pgs};
 }
 
 /* ── SAVE ASSIGNMENT ───────────────────────────────────────────────── */
@@ -5224,10 +5272,17 @@ async function _wiRtOf(orderId){
 // then deletes the driver's payroll line («έμεινε χωρίς οδηγό μας» — three
 // times in three minutes on 30/9). So every caller that clears a vehicle asks
 // here first and clears NOTHING unless this says ok (lookup: _wiRtOf).
-async function _wiRtLeave(orderId){
+async function _wiRtLeave(orderId,opts){
   const at=await _wiRtOf(orderId);
   if(!at.ok) return at;
   if(!at.rt) return {ok:true};
+  // T195 (27/11): an unmatch passes the order numbers of ITS exports. A leg on a round trip that carries another
+  // export stays where it is: on 20/11 the unmatch of #700 took #770 off #759's trip (09:51 UTC), and the one of
+  // #759 took it off #750's (12:28 UTC).
+  if(opts&&Array.isArray(opts.exportPgs)){
+    const other=(at.rt.ct_rt_legs||[]).filter(l=>String(l.direction||'').toUpperCase()==='EXPORT'&&Number(l.order_id)!==at.pg&&!opts.exportPgs.includes(Number(l.order_id)));
+    if(other.length) return {ok:false,status:'other',msg:'είναι στο '+(await _wiRtTxt(at.rt))+' άλλης εξαγωγής (#'+other.map(l=>l.order_id).join(', #')+')'};
+  }
   const del=await _wiRtLegDelete(at.rt.id,at.pg).catch(err=>({ok:false,status:0,error:err&&err.message}));
   if(del.ok) return {ok:true};
   return {ok:false,status:del.status,msg:del.status===409?'το '+(await _wiRtTxt(at.rt))+' είναι κλειστό — ζήτα από τον owner'
@@ -7965,7 +8020,7 @@ async function _wiStockReturnLoneRun(pid,expOid,expRowId){
   // Leg off the round trip first, vehicle second — _wiRemoveImport keeps that
   // order (_wiRtLeave) and keeps the vehicle of a member whose leg could not
   // leave (impact map 4/10 D-06; the rig proves the request order, D-23).
-  await _wiRemoveImport(expRowId);
+  if((await _wiRemoveImport(expRowId))===null) return false;   // T195: refused before any write
   // _wiRemoveImport empties the vehicle of the unmatched member; the board
   // does not take that on faith (αρχή 2) — both orders are read back.
   let exp=null,pc=null;
