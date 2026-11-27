@@ -2970,10 +2970,15 @@ function openEntityCreate(entityKey) {
   buildEntityModal(entityKey, null, {});
 }
 
+// T208 (ValueDriven 27/11/2026): what the edit form SHOWED, kept when it opens, so the save compares with
+// that and not with a list that may have been read again since. See saveEntityRecord.
+let _entitySeen = null;
+
 function openEntityEdit(entityKey, recId) {
   const st  = _entityState[entityKey];
   const rec = st.records.find(r => r.id === recId);
   if (!rec) return;
+  _entitySeen = { entityKey, recId, fields: JSON.parse(JSON.stringify(rec.fields || {})) };
   buildEntityModal(entityKey, recId, rec.fields);
 }
 
@@ -3134,7 +3139,8 @@ async function saveEntityRecord(entityKey, recId) {
   // that HAD a value are nulled, so audit_log shows real changes only.
   // fieldsToColumns keeps null (`if (column) row[column] = value`) and
   // PostgREST writes it — worker/src/index.js handleFacadeUpdate, read 15/9.
-  const orig = recId ? (((_entityState[entityKey] || {}).records || []).find(r => r.id === recId) || {}).fields || {} : {};
+  const seen = _entitySeen && _entitySeen.entityKey === entityKey && _entitySeen.recId === recId ? _entitySeen.fields : null;
+  const orig = recId ? seen || (((_entityState[entityKey] || {}).records || []).find(r => r.id === recId) || {}).fields || {} : {};
   const hadValue = v => v != null && v !== '' && !(Array.isArray(v) && !v.length);
   const fields = {};
   for (const sec of cfg.formFields) {
@@ -3164,12 +3170,56 @@ async function saveEntityRecord(entityKey, recId) {
     }
   }
 
+  // T208: an edit sends only the fields the user changed, with `_expect` = what the form showed for them. The whole
+  // form used to go back, so a field someone else changed meanwhile was silently put back to the old value, and two
+  // edits of one field were last-write-wins. Now an untouched field is never written, and a field someone else
+  // changed answers 409 with nothing written (Worker «_expect», §g.2). Same comparator as the Worker (WI4.sameValue,
+  // shared vectors). List fields hold arrays the check cannot read (Worker 400), so they are written unchecked;
+  // the Worker takes at most 12 labels, so a 13th change is written unchecked too.
+  let expect;
+  if (recId) {
+    const sameValue = typeof WI4 !== 'undefined' && WI4 && WI4.sameValue;
+    if (sameValue) {
+      for (const k of Object.keys(fields)) if (sameValue(fields[k], orig[k], k)) delete fields[k];
+      if (!Object.keys(fields).length) {
+        closeModal();
+        toast(cfg.v2 ? 'Δεν άλλαξε τίποτα' : 'Nothing changed');
+        return;
+      }
+      const listLabels = new Set(cfg.formFields.flatMap(s => s.fields).filter(f => f.type === 'list').map(f => f.f));
+      const checked = Object.keys(fields).filter(k => !listLabels.has(k)).slice(0, 12);
+      if (checked.length) {
+        expect = {};
+        for (const k of checked) expect[k] = orig[k] === undefined ? null : orig[k];
+      }
+    } else if (typeof logError === 'function') {
+      // wi4-logic.js not loaded: the save goes out as it always did, and says so once.
+      logError(new Error('WI4.sameValue missing: entity edit sent whole, no _expect'), 'saveEntityRecord ' + entityKey);
+    }
+  }
+
   const btn = document.activeElement;
   if (btn) { btn.textContent = cfg.v2 ? 'Αποθήκευση…' : 'Saving...'; btn.disabled = true; }
 
   try {
     if (recId) {
-      await atPatch(cfg.tableId, recId, fields);
+      const res = await atSafePatch(cfg.tableId, recId, fields, expect ? { expect } : undefined);
+      if (res && res.conflict) {
+        // Nothing was written. The form stays open so the user can copy what they typed; the list is read again,
+        // so the next opening shows what is there now.
+        if (btn) { btn.textContent = cfg.v2 ? 'Αποθήκευση' : 'Save'; btn.disabled = false; }
+        const label = f => ((cfg.formFields.flatMap(s => s.fields).find(x => x.f === f) || {}).label) || f;
+        const now = (res.fields || []).map(f => {
+          const v = (res.current || {})[f];
+          // A link answers with a record id, which means nothing to the user: name the field only.
+          if (Array.isArray(v) || /^rec[A-Za-z0-9]{6,}$/.test(String(v))) return label(f);
+          return `${label(f)}: ${v == null || v === '' ? 'κενό' : '«' + v + '»'}`;
+        }).join(', ');
+        showErrorToast(`Δεν αποθηκεύτηκε τίποτα: άλλος χρήστης άλλαξε την εγγραφή από τότε που την άνοιξες${now ? ' (τώρα ' + now + ')' : ''}. Κλείσε τη φόρμα, άνοιξέ την ξανά και ξανακάνε την αλλαγή σου.`, 'warn', 15000);
+        invalidateCache(cfg.tableId);
+        renderEntity(entityKey).catch(e => { if (typeof logError === 'function') logError(e, 'entity reload after conflict'); });
+        return;
+      }
     } else {
       // a role that may create but not delete (dispatcher on drivers, owner 25/11) gets no Undo: its undo is a
       // DELETE the Worker refuses (code review xhigh)
