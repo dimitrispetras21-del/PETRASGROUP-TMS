@@ -3810,8 +3810,10 @@ async function scnOffline(browser, origin) {
     const r = await page.evaluate(() => (WINTL._syncLog || {}).recWiE007 || null);
     const ev = await evs(page);
     const ticks = ev.filter(e => e.k === 'toast' && /✓/.test(String(e.a[0]))).map(e => String(e.a[0]));
-    ok(scn, 'logged «Χωρίς σύνδεση — … μπήκε σε αναμονή, δεν είναι ακόμη στη βάση», never «η ανάθεση γράφτηκε»', st === 'err' && !!r && /Χωρίς σύνδεση/.test(r.msg), r);
-    ok(scn, 'no ✓ toast, no downstream sync, zero PATCHes at the facade (queued only)', !ticks.length && !ev.some(e => e.k === 'sync') && !patches(S).length, { ticks, p: patches(S) });
+    // T8 (owner 27/11/2026): nothing is queued offline any more; the save is refused at once and said
+    // («Δεν υπάρχει σύνδεση: αυτή η αλλαγή δεν στάλθηκε», core/api.js), the row says it was not written.
+    ok(scn, 'refused and logged «ΔΕΝ γράφτηκε», never «η ανάθεση γράφτηκε» (T8: no queue)', st === 'err' && !!r && /ΔΕΝ γράφτηκε/.test(r.msg), r);
+    ok(scn, 'no ✓ toast, no downstream sync, zero PATCHes at the facade (refused in the browser)', !ticks.length && !ev.some(e => e.k === 'sync') && !patches(S).length, { ticks, p: patches(S) });
     await page.context().setOffline(false);
     await page.context().close();
   }
@@ -3826,7 +3828,7 @@ async function scnOffline(browser, origin) {
     const st = await syncSettled(page, 'recWiE006', 30000);
     const r = await page.evaluate(() => (WINTL._syncLog || {}).recWiE006 || null);
     const ev = await evs(page);
-    ok(scn, 'the match is logged «Χωρίς σύνδεση — … μπήκε σε αναμονή», not «Αποθηκεύτηκε»', st === 'err' && !!r && /Χωρίς σύνδεση/.test(r.msg), r);
+    ok(scn, 'the match is refused and logged «ΔΕΝ γράφτηκε», not «Αποθηκεύτηκε» (T8: no queue)', st === 'err' && !!r && /ΔΕΝ γράφτηκε/.test(r.msg), r);
     ok(scn, 'no downstream sync for it, zero PATCHes at the facade', !ev.some(e => e.k === 'sync') && !patches(S).length, patches(S));
     await page.context().setOffline(false);
     await page.context().close();
