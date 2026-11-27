@@ -3182,7 +3182,10 @@ async function saveEntityRecord(entityKey, recId) {
   if (recId) {
     const sameValue = typeof WI4 !== 'undefined' && WI4 && WI4.sameValue;
     if (sameValue) {
-      for (const k of Object.keys(fields)) if (sameValue(fields[k], orig[k], k)) delete fields[k];
+      // A text input drops line breaks from what it shows (31 client addresses hold one), so an untouched field is
+      // compared the way the input shows it; otherwise every save wrote the address back with its lines run together.
+      const shown = v => (typeof v === 'string' ? v.replace(/[\r\n]+/g, '') : v);
+      for (const k of Object.keys(fields)) if (sameValue(fields[k], orig[k], k) || sameValue(shown(fields[k]), shown(orig[k]), k)) delete fields[k];
       if (!Object.keys(fields).length) {
         closeModal();
         toast(cfg.v2 ? 'Δεν άλλαξε τίποτα' : 'Nothing changed');

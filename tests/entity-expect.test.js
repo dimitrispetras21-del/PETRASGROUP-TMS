@@ -234,3 +234,11 @@ test('undo: an empty field is remembered as null, so «filled an empty field» c
   const API = read('core/api.js');
   assert.match(API, /_undoPrev\[fk\] = hit\.fields\[fk\] === undefined \? null : hit\.fields\[fk\];/);
 });
+
+test('an address with a line break, untouched, is not sent (a text input shows it without the break)', async () => {
+  const env = load(); openClient(env, Object.assign({}, CLIENT, { Adress: 'WIEZIENNA 21B M2\n50-118 WROCLAW' }));
+  input(env, 'Adress').value = 'WIEZIENNA 21B M250-118 WROCLAW';   // what the browser's <input> holds
+  input(env, 'Phone').value = '2310 111111';
+  await save(env);
+  assert.deepStrictEqual(Object.keys(env.calls.patch[0].fields), ['Phone']);
+});
