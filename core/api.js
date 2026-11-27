@@ -87,19 +87,18 @@ const _offlineQueue = [];
 
 function _isOnline() { return navigator.onLine; }
 
-function _queueOffline(method, url, body, recordId) {
-  if (_offlineQueue.length >= 50) {
-    if (typeof showErrorToast === 'function') showErrorToast('Offline queue full (50) — αλλαγή δεν αποθηκεύτηκε', 'error');
-    if (typeof logError === 'function') logError(new Error('Offline queue overflow'), '_queueOffline');
-    return;
-  }
-  // req: the id of the user action that queued this (Level A); replayed as <req>-q so the Worker/audit line
-  // of the eventual write can be joined to the moment the user pressed the button.
-  _offlineQueue.push({ method, url, body, timestamp: Date.now(), recordId: recordId || null, req: _newReqId() });
-  _saveOfflineQueue();
-  if (typeof showErrorToast === 'function') {
-    showErrorToast('\u0391\u03C0\u03BF\u03B8\u03B7\u03BA\u03B5\u03CD\u03C4\u03B7\u03BA\u03B5 \u03C4\u03BF\u03C0\u03B9\u03BA\u03AC \u2014 \u03B8\u03B1 \u03C3\u03C4\u03B1\u03BB\u03B5\u03AF \u03BC\u03CC\u03BB\u03B9\u03C2 \u03B3\u03C5\u03C1\u03AF\u03C3\u03B5\u03B9 \u03C4\u03BF internet', 'warn');
-  }
+// T8 (owner 27/11/2026: «Κανένας δεν δουλεύει χωρίς ρεύμα… Οπότε συμφωνώ»): a save never waits offline any more.
+// The queue replayed saves later over newer changes (no conflict check), linked creates to made-up `offline_` ids
+// (an order arrived without its stops) and skipped the browser's sync chain — all seen on a local copy 13/10/2026.
+// Now a save without a network is refused at once and said; nothing is written, and the caller's form stays open.
+// What a browser queued before this change is still sent by _flushOfflineQueue below, so nothing stored is lost.
+// It speaks for this one request only: in a multi-step save an earlier step may have been written, and the caller
+// says that part (review 27/11). opts.quiet: the caller reports the failure on its own line, no toast on top.
+function _offlineRefusal(message, opts) {
+  const e = new Error(message || 'Δεν υπάρχει σύνδεση: αυτή η αλλαγή δεν στάλθηκε. Δοκίμασε ξανά όταν επανέλθει το internet.');
+  e._noRetry = true; e._kind = 'offline';
+  if (!(opts && opts.quiet === true) && typeof showErrorToast === 'function') showErrorToast(e.message, 'warn', 8000);
+  return e;
 }
 
 // Items of a running flush that are not resolved yet (sent / refused / kept).
@@ -814,6 +813,7 @@ let _atExpectIgnoredLogged = false;
 async function atPatch(tableId, recId, fields, opts) {
   const _expect = opts && opts.expect ? opts.expect : null;
   const _quiet = !!(opts && opts.quiet === true);
+  if (!_isOnline()) throw _offlineRefusal(null, opts);   // T8: before the audit line, which records sent writes
   _auditLog('PATCH', tableId, recId, fields);
   // Capture pre-state for undo (from cache only — no extra fetch)
   let _undoPrev = null;
@@ -838,13 +838,6 @@ async function atPatch(tableId, recId, fields, opts) {
       // Undo buffer capture is best-effort; log so silent undo failures are visible.
       console.warn('[api] undo buffer capture failed:', e && e.message);
     }
-  }
-  if (!_isOnline()) {
-    // The queued body never carries `_expect`, on purpose: the replay happens
-    // minutes or hours later, and comparing against what the user saw THEN
-    // would raise a false «someone changed it» for every intervening edit.
-    _queueOffline('PATCH', _apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}`), { fields }, recId);
-    return { id: recId, fields, _offline: true };
   }
   const res = await _enqueue(() => _atRetry((_r) => _fetchWithTimeout(_apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}`), {
     method: 'PATCH',
@@ -906,11 +899,8 @@ async function atPatch(tableId, recId, fields, opts) {
 // flag spans awaits, so a detached sync holding it would also swallow the
 // user's own concurrent action (§4 #9 review, 4/10/2026).
 async function atCreate(tableId, fields, opts) {
+  if (!_isOnline()) throw _offlineRefusal(null, opts);
   _auditLog('CREATE', tableId, null, fields);
-  if (!_isOnline()) {
-    _queueOffline('POST', _apiUrl(`/v0/${AT_BASE}/${tableId}`), { fields });
-    return { id: 'offline_' + Date.now(), fields, _offline: true };
-  }
   const res = await _enqueue(() => _atRetry((_r) => _fetchWithTimeout(_apiUrl(`/v0/${AT_BASE}/${tableId}`), {
     method: 'POST',
     headers: _apiHeaders('POST', _r),
@@ -940,22 +930,15 @@ async function atCreate(tableId, fields, opts) {
  * @returns {Promise<{id:string, deleted:boolean}>} Deletion confirmation
  */
 async function atDelete(tableId, recId, opts) {
-  _auditLog('DELETE', tableId, recId, null);
   // opts.confirmToken: the token of a 428 preview (F5 Ε19), sent back as the user confirmed it
   const q = opts && opts.confirmToken ? '?confirm_token=' + encodeURIComponent(opts.confirmToken) : '';
   if (!_isOnline()) {
-    // F5 Ε19: an ORDER delete may need the base's consequences first (428 + a token only the live answer gives).
-    // Queued without a token it would be replayed later, refused, and the user — told «deleted» — would learn
-    // it minutes after. So an order delete is never queued: it waits for the network, said now.
-    if (typeof TABLES !== 'undefined' && tableId === TABLES.ORDERS && !q) {
-      const eOff = new Error('Η διαγραφή παραγγελίας θέλει σύνδεση — δεν έγινε τίποτα· δοκίμασε ξανά όταν επανέλθει το δίκτυο');
-      eOff._noRetry = true; eOff._kind = 'offline';
-      if (typeof showErrorToast === 'function') showErrorToast(eOff.message, 'warn', 8000);
-      throw eOff;
-    }
-    _queueOffline('DELETE', _apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}${q}`), null, recId);
-    return { id: recId, deleted: true, _offline: true };
+    // F5 Ε19: an order delete has always said this; since T8 every delete does.
+    throw _offlineRefusal(typeof TABLES !== 'undefined' && tableId === TABLES.ORDERS && !q
+      ? 'Η διαγραφή παραγγελίας θέλει σύνδεση — δεν έγινε τίποτα· δοκίμασε ξανά όταν επανέλθει το δίκτυο'
+      : 'Δεν υπάρχει σύνδεση: αυτή η διαγραφή δεν στάλθηκε. Δοκίμασε ξανά όταν επανέλθει το internet.', opts);
   }
+  _auditLog('DELETE', tableId, recId, null);
   const res = await _enqueue(() => _atRetry((_r) => _fetchWithTimeout(_apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}${q}`), {
     method: 'DELETE',
     headers: _apiHeaders('DELETE', _r)
@@ -1000,6 +983,7 @@ async function atGetOne(tableId, recId) {
  * @returns {Promise<Array<{id:string, fields:Object}>>} Created records
  */
 async function atCreateBatch(tableId, recordsArr) {
+  if (!_isOnline()) throw _offlineRefusal();   // T8: like atCreate / atPatch (order stops are saved this way)
   const results = [];
   for (let i = 0; i < recordsArr.length; i += 10) {
     const batch = recordsArr.slice(i, i + 10);
@@ -1046,6 +1030,7 @@ async function atCreateBatch(tableId, recordsArr) {
  * @returns {Promise<Array<{id:string, fields:Object}>>} Updated records
  */
 async function atPatchBatch(tableId, recordsArr) {
+  if (!_isOnline()) throw _offlineRefusal();   // T8: like atCreate / atPatch (order stops are saved this way)
   const results = [];
   for (let i = 0; i < recordsArr.length; i += 10) {
     const batch = recordsArr.slice(i, i + 10);
@@ -1481,6 +1466,8 @@ async function atSoftDelete(tableId, recordId, opts) {
   // for 60 s, and one click created a duplicate live record next to the one
   // that was never deleted (impact map 4/10 DL-04; pre-existing for every
   // order, made routine by migration 057's designed refusals).
+  // T8: refused before the read, so an offline delete shows one message, not a read error first.
+  if (!_isOnline()) return atDelete(tableId, recordId, opts);
   let recLabel = '', rec = null, readErr = null;
   try { rec = await atGetOne(tableId, recordId); } catch(e) { readErr = e; }
   const result = await atDelete(tableId, recordId, opts);   // throws on refusal → no trash, no undo

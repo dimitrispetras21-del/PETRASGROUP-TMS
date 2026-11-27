@@ -72,12 +72,10 @@ test('retries share ONE id: -1, -2, -3', async () => {
   assert.deepEqual(r, [`${base}-1`, `${base}-2`, `${base}-3`]);
 });
 
-test('offline write is queued with its id and replayed as <id>-q; the flush leaves a central line', async () => {
+test('a write a browser queued before T8 is replayed as <id>-q; the flush leaves a central line', async () => {
   const s = sandbox(() => ok(true));
   await s.run("atPatch('tblT', 'recA', { Notes: 'warmup' })");
-  s.ctx.navigator.onLine = false;
-  const res = await s.run("atPatch('tblT', 'recB', { Notes: 'offline' })");
-  assert.equal(res._offline, true);
+  s.run("(function (t, r, f) { _offlineQueue.push({ method: 'PATCH', url: _apiUrl('/v0/' + AT_BASE + '/' + t + '/' + r), body: { fields: f }, timestamp: Date.now(), recordId: r, req: _newReqId() }); _saveOfflineQueue(); })('tblT', 'recB', { Notes: 'offline' })");
   const q = JSON.parse(s.ctx.localStorage.getItem('tms_offline_queue'));
   assert.match(q[0].req, /^[a-z0-9]{8,32}$/);
   s.ctx.navigator.onLine = true;
