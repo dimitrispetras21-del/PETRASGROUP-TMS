@@ -2970,10 +2970,15 @@ function openEntityCreate(entityKey) {
   buildEntityModal(entityKey, null, {});
 }
 
+// T208 (ValueDriven 27/11/2026): what the edit form SHOWED, kept when it opens, so the save compares with
+// that and not with a list that may have been read again since. See saveEntityRecord.
+let _entitySeen = null;
+
 function openEntityEdit(entityKey, recId) {
   const st  = _entityState[entityKey];
   const rec = st.records.find(r => r.id === recId);
   if (!rec) return;
+  _entitySeen = { entityKey, recId, fields: JSON.parse(JSON.stringify(rec.fields || {})) };
   buildEntityModal(entityKey, recId, rec.fields);
 }
 
@@ -2999,10 +3004,12 @@ function buildEntityModal(entityKey, recId, fields) {
       : '';
     bodyHTML += `<div class="form-grid${sec.cols === 3 ? ' cols-3' : ''}"${secLabel ? '' : ' style="margin-top:16px"'}>`;
     for (const field of sec.fields) {
+      // Every stored value is escaped into the markup: a « " » in a name cut the value off, and the save then
+      // wrote the cut value back (T208 review, 27/11: 42 active clients have one).
       const val = fields[field.f] ?? '';
       let input = '';
       if (field.type === 'textarea') {
-        input = `<textarea class="form-textarea" id="ef_${field.f.replace(/\s/g,'_')}" rows="3">${val}</textarea>`;
+        input = `<textarea class="form-textarea" id="ef_${field.f.replace(/\s/g,'_')}" rows="3">${_ecEsc(val)}</textarea>`;
       } else if (field.type === 'select') {
         const opts = Array.isArray(field.options)
           ? field.options.map(o => typeof o === 'string'
@@ -3013,14 +3020,14 @@ function buildEntityModal(entityKey, recId, fields) {
           <option value="">${isV2 ? '— Επιλογή —' : '— Select —'}</option>${opts}</select>`;
       } else if (field.type === 'date') {
         const dv = val ? val.split('T')[0] : '';
-        input = `<input class="form-input" type="date" id="ef_${field.f.replace(/\s/g,'_')}" value="${dv}" oninput="this.nextElementSibling.textContent=dateReadout(this.value)">`
+        input = `<input class="form-input" type="date" id="ef_${field.f.replace(/\s/g,'_')}" value="${_ecEsc(dv)}" oninput="this.nextElementSibling.textContent=dateReadout(this.value)">`
               + `<div class="ef-hint form-date-readout">${dateReadout(dv)}</div>`;
       } else if (field.type === 'number') {
         // No «0» placeholder on dead fields: a grey 0 in a disabled box reads
         // as a stored zero — exactly what rule #3 forbids.
-        input = `<input class="form-input" type="number" id="ef_${field.f.replace(/\s/g,'_')}" value="${val}"${field.disabled ? '' : ' placeholder="0"'}>`;
+        input = `<input class="form-input" type="number" id="ef_${field.f.replace(/\s/g,'_')}" value="${_ecEsc(val)}"${field.disabled ? '' : ' placeholder="0"'}>`;
       } else if (field.type === 'email') {
-        input = `<input class="form-input" type="email" id="ef_${field.f.replace(/\s/g,'_')}" value="${val}" placeholder="email@example.com">`;
+        input = `<input class="form-input" type="email" id="ef_${field.f.replace(/\s/g,'_')}" value="${_ecEsc(val)}" placeholder="email@example.com">`;
       } else if (field.type === 'country') {
         // One list everywhere (owner 5/9): the option VALUES are ISO codes,
         // the visible names are Greek. A legacy spelling the list cannot
@@ -3032,7 +3039,7 @@ function buildEntityModal(entityKey, recId, fields) {
         const shown = Array.isArray(val) ? val.join(', ') : val;
         input = `<input class="form-input" type="text" id="ef_${field.f.replace(/\s/g,'_')}" value="${_ecEsc(shown)}" placeholder="${field.label}">`;
       } else {
-        input = `<input class="form-input" type="text" id="ef_${field.f.replace(/\s/g,'_')}" value="${val}" placeholder="${field.label}${field.req?' *':''}">`;
+        input = `<input class="form-input" type="text" id="ef_${field.f.replace(/\s/g,'_')}" value="${_ecEsc(val)}" placeholder="${field.label}${field.req?' *':''}">`;
       }
       // Dead fields (plan §2.1): disabled with the reason spelled out — the
       // facade would accept the value, discard it, and toast success.
@@ -3134,7 +3141,8 @@ async function saveEntityRecord(entityKey, recId) {
   // that HAD a value are nulled, so audit_log shows real changes only.
   // fieldsToColumns keeps null (`if (column) row[column] = value`) and
   // PostgREST writes it — worker/src/index.js handleFacadeUpdate, read 15/9.
-  const orig = recId ? (((_entityState[entityKey] || {}).records || []).find(r => r.id === recId) || {}).fields || {} : {};
+  const seen = _entitySeen && _entitySeen.entityKey === entityKey && _entitySeen.recId === recId ? _entitySeen.fields : null;
+  const orig = recId ? seen || (((_entityState[entityKey] || {}).records || []).find(r => r.id === recId) || {}).fields || {} : {};
   const hadValue = v => v != null && v !== '' && !(Array.isArray(v) && !v.length);
   const fields = {};
   for (const sec of cfg.formFields) {
@@ -3164,12 +3172,60 @@ async function saveEntityRecord(entityKey, recId) {
     }
   }
 
+  // T208: an edit sends only the fields the user changed, with `_expect` = what the form showed for them. The whole
+  // form used to go back, so a field someone else changed meanwhile was silently put back to the old value, and two
+  // edits of one field were last-write-wins. Now an untouched field is never written, and a field someone else
+  // changed answers 409 with nothing written (Worker «_expect», §g.2). Same comparator as the Worker (WI4.sameValue,
+  // shared vectors). List fields hold arrays the check cannot read (Worker 400), so they are written unchecked;
+  // the Worker takes at most 12 labels, so a 13th change is written unchecked too.
+  let expect;
+  if (recId) {
+    const sameValue = typeof WI4 !== 'undefined' && WI4 && WI4.sameValue;
+    if (sameValue) {
+      // A text input drops line breaks from what it shows (31 client addresses hold one), so an untouched field is
+      // compared the way the input shows it; otherwise every save wrote the address back with its lines run together.
+      const shown = v => (typeof v === 'string' ? v.replace(/[\r\n]+/g, '') : v);
+      for (const k of Object.keys(fields)) if (sameValue(fields[k], orig[k], k) || sameValue(shown(fields[k]), shown(orig[k]), k)) delete fields[k];
+      if (!Object.keys(fields).length) {
+        closeModal();
+        toast(cfg.v2 ? 'Δεν άλλαξε τίποτα' : 'Nothing changed');
+        return;
+      }
+      const listLabels = new Set(cfg.formFields.flatMap(s => s.fields).filter(f => f.type === 'list').map(f => f.f));
+      const checked = Object.keys(fields).filter(k => !listLabels.has(k)).slice(0, 12);
+      if (checked.length) {
+        expect = {};
+        for (const k of checked) expect[k] = orig[k] === undefined ? null : orig[k];
+      }
+    } else if (typeof logError === 'function') {
+      // wi4-logic.js not loaded: the save goes out as it always did, and says so once.
+      logError(new Error('WI4.sameValue missing: entity edit sent whole, no _expect'), 'saveEntityRecord ' + entityKey);
+    }
+  }
+
   const btn = document.activeElement;
   if (btn) { btn.textContent = cfg.v2 ? 'Αποθήκευση…' : 'Saving...'; btn.disabled = true; }
 
   try {
     if (recId) {
-      await atPatch(cfg.tableId, recId, fields);
+      const res = await atSafePatch(cfg.tableId, recId, fields, expect ? { expect } : undefined);
+      if (res && res.conflict) {
+        // Nothing was written. The form stays open so the user can copy what they typed; the list is read again,
+        // so the next opening shows what is there now.
+        if (btn) { btn.textContent = cfg.v2 ? 'Αποθήκευση' : 'Save'; btn.disabled = false; }
+        const label = f => ((cfg.formFields.flatMap(s => s.fields).find(x => x.f === f) || {}).label) || f;
+        const now = (res.fields || []).map(f => {
+          const v = (res.current || {})[f];
+          // A link answers with a record id, which means nothing to the user: name the field only.
+          if (Array.isArray(v) || /^rec[A-Za-z0-9]{6,}$/.test(String(v))) return label(f);
+          return `${label(f)}: ${v == null || v === '' ? 'κενό' : '«' + v + '»'}`;
+        }).join(', ');
+        const who = res.by === 'auto' ? 'η εγγραφή άλλαξε αυτόματα' : 'άλλος χρήστης άλλαξε την εγγραφή';
+        showErrorToast(`Δεν αποθηκεύτηκε τίποτα: ${who} από τότε που την άνοιξες${now ? ' (τώρα ' + now + ')' : ''}. Κλείσε τη φόρμα, άνοιξέ την ξανά και ξανακάνε την αλλαγή σου.`, 'warn', 15000);
+        invalidateCache(cfg.tableId);
+        renderEntity(entityKey).catch(e => { if (typeof logError === 'function') logError(e, 'entity reload after conflict'); });
+        return;
+      }
     } else {
       // a role that may create but not delete (dispatcher on drivers, owner 25/11) gets no Undo: its undo is a
       // DELETE the Worker refuses (code review xhigh)
