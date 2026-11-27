@@ -827,7 +827,9 @@ async function atPatch(tableId, recId, fields, opts) {
           const hit = cached.find(r => r.id === recId);
           if (hit && hit.fields) {
             _undoPrev = {};
-            Object.keys(fields).forEach(fk => { _undoPrev[fk] = hit.fields[fk]; });
+            // null, not undefined: the facade leaves empty columns out of a record, and an undefined vanishes from
+            // JSON, so the Undo of «filled an empty field» sent {fields:{}} and got a 400 (T208 review, 27/11).
+            Object.keys(fields).forEach(fk => { _undoPrev[fk] = hit.fields[fk] === undefined ? null : hit.fields[fk]; });
             break;
           }
         }

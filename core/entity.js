@@ -3004,10 +3004,12 @@ function buildEntityModal(entityKey, recId, fields) {
       : '';
     bodyHTML += `<div class="form-grid${sec.cols === 3 ? ' cols-3' : ''}"${secLabel ? '' : ' style="margin-top:16px"'}>`;
     for (const field of sec.fields) {
+      // Every stored value is escaped into the markup: a « " » in a name cut the value off, and the save then
+      // wrote the cut value back (T208 review, 27/11: 42 active clients have one).
       const val = fields[field.f] ?? '';
       let input = '';
       if (field.type === 'textarea') {
-        input = `<textarea class="form-textarea" id="ef_${field.f.replace(/\s/g,'_')}" rows="3">${val}</textarea>`;
+        input = `<textarea class="form-textarea" id="ef_${field.f.replace(/\s/g,'_')}" rows="3">${_ecEsc(val)}</textarea>`;
       } else if (field.type === 'select') {
         const opts = Array.isArray(field.options)
           ? field.options.map(o => typeof o === 'string'
@@ -3018,14 +3020,14 @@ function buildEntityModal(entityKey, recId, fields) {
           <option value="">${isV2 ? '— Επιλογή —' : '— Select —'}</option>${opts}</select>`;
       } else if (field.type === 'date') {
         const dv = val ? val.split('T')[0] : '';
-        input = `<input class="form-input" type="date" id="ef_${field.f.replace(/\s/g,'_')}" value="${dv}" oninput="this.nextElementSibling.textContent=dateReadout(this.value)">`
+        input = `<input class="form-input" type="date" id="ef_${field.f.replace(/\s/g,'_')}" value="${_ecEsc(dv)}" oninput="this.nextElementSibling.textContent=dateReadout(this.value)">`
               + `<div class="ef-hint form-date-readout">${dateReadout(dv)}</div>`;
       } else if (field.type === 'number') {
         // No «0» placeholder on dead fields: a grey 0 in a disabled box reads
         // as a stored zero — exactly what rule #3 forbids.
-        input = `<input class="form-input" type="number" id="ef_${field.f.replace(/\s/g,'_')}" value="${val}"${field.disabled ? '' : ' placeholder="0"'}>`;
+        input = `<input class="form-input" type="number" id="ef_${field.f.replace(/\s/g,'_')}" value="${_ecEsc(val)}"${field.disabled ? '' : ' placeholder="0"'}>`;
       } else if (field.type === 'email') {
-        input = `<input class="form-input" type="email" id="ef_${field.f.replace(/\s/g,'_')}" value="${val}" placeholder="email@example.com">`;
+        input = `<input class="form-input" type="email" id="ef_${field.f.replace(/\s/g,'_')}" value="${_ecEsc(val)}" placeholder="email@example.com">`;
       } else if (field.type === 'country') {
         // One list everywhere (owner 5/9): the option VALUES are ISO codes,
         // the visible names are Greek. A legacy spelling the list cannot
@@ -3037,7 +3039,7 @@ function buildEntityModal(entityKey, recId, fields) {
         const shown = Array.isArray(val) ? val.join(', ') : val;
         input = `<input class="form-input" type="text" id="ef_${field.f.replace(/\s/g,'_')}" value="${_ecEsc(shown)}" placeholder="${field.label}">`;
       } else {
-        input = `<input class="form-input" type="text" id="ef_${field.f.replace(/\s/g,'_')}" value="${val}" placeholder="${field.label}${field.req?' *':''}">`;
+        input = `<input class="form-input" type="text" id="ef_${field.f.replace(/\s/g,'_')}" value="${_ecEsc(val)}" placeholder="${field.label}${field.req?' *':''}">`;
       }
       // Dead fields (plan §2.1): disabled with the reason spelled out — the
       // facade would accept the value, discard it, and toast success.
@@ -3215,7 +3217,8 @@ async function saveEntityRecord(entityKey, recId) {
           if (Array.isArray(v) || /^rec[A-Za-z0-9]{6,}$/.test(String(v))) return label(f);
           return `${label(f)}: ${v == null || v === '' ? 'κενό' : '«' + v + '»'}`;
         }).join(', ');
-        showErrorToast(`Δεν αποθηκεύτηκε τίποτα: άλλος χρήστης άλλαξε την εγγραφή από τότε που την άνοιξες${now ? ' (τώρα ' + now + ')' : ''}. Κλείσε τη φόρμα, άνοιξέ την ξανά και ξανακάνε την αλλαγή σου.`, 'warn', 15000);
+        const who = res.by === 'auto' ? 'η εγγραφή άλλαξε αυτόματα' : 'άλλος χρήστης άλλαξε την εγγραφή';
+        showErrorToast(`Δεν αποθηκεύτηκε τίποτα: ${who} από τότε που την άνοιξες${now ? ' (τώρα ' + now + ')' : ''}. Κλείσε τη φόρμα, άνοιξέ την ξανά και ξανακάνε την αλλαγή σου.`, 'warn', 15000);
         invalidateCache(cfg.tableId);
         renderEntity(entityKey).catch(e => { if (typeof logError === 'function') logError(e, 'entity reload after conflict'); });
         return;

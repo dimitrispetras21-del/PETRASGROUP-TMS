@@ -30,7 +30,7 @@ const wapi = new Function('__name',
 function load() {
   const calls = { patch: [], toast: [], warn: [], closed: 0, rendered: 0, logged: [] };
   const elements = {};
-  const dummy = () => ({ value: '', textContent: '', disabled: false, style: {}, classList: { toggle() {}, add() {}, remove() {} } });
+  const dummy = () => ({ value: '', textContent: '', disabled: false, style: {}, addEventListener() {}, classList: { toggle() {}, add() {}, remove() {} } });
   const ctx = {
     console,
     document: {
@@ -45,7 +45,7 @@ function load() {
   };
   ctx.window = ctx; ctx.self = ctx;
   vm.createContext(ctx);
-  for (const f of ['config.js', 'core/wi4-logic.js', 'core/entity.js']) vm.runInContext(read(f), ctx, { filename: f });
+  for (const f of ['config.js', 'core/countries.js', 'core/wi4-logic.js', 'core/entity.js']) vm.runInContext(read(f), ctx, { filename: f });
   Object.assign(ctx, {
     atSafePatch: async (tableId, recId, fields, opts) => { calls.patch.push({ tableId, recId, fields, opts }); return ctx.__answer || { id: recId, fields }; },
     atPatch: async () => { throw new Error('saveEntityRecord must go through atSafePatch'); },
@@ -54,6 +54,7 @@ function load() {
     toast: (m) => calls.toast.push(m), showErrorToast: (m, kind) => calls.warn.push({ m, kind }),
     reportError: (m, e) => { throw e; }, logError: (e, where) => calls.logged.push(`${where}: ${e.message}`),
     renderEntity: async () => { calls.rendered++; }, can: () => 'full',
+    openModal: (title, body) => { calls.modal = body; },
   });
   return { ctx, calls, elements, dummy };
 }
@@ -190,4 +191,46 @@ test('without WI4.sameValue the form is sent whole, unchecked, and that is logge
   assert.ok(Object.keys(p.fields).length > 1, 'whole form, as before T208');
   assert.strictEqual(p.opts, undefined);
   assert.strictEqual(env.calls.logged.length, 1);
+});
+
+test('a list field that changed is written but never put in _expect (the Worker answers 400 to one)', async () => {
+  const env = load();
+  const fields = { Name: 'Συνεργείο Α', Aliases: ['ΣΥΝ Α'], Phone: '1' };
+  vm.runInContext(`_entityState.workshops = { records: [{ id: 'recWORKSHOP01', fields: ${JSON.stringify(fields)} }], filtered: [], filters: {} };`, env.ctx);
+  vm.runInContext("buildEntityModal = function () {}; openEntityEdit('workshops', 'recWORKSHOP01');", env.ctx);
+  const cfg = vm.runInContext('ENTITY_CONFIG.workshops', env.ctx);
+  for (const sec of cfg.formFields) for (const f of sec.fields) {
+    const el = env.dummy();
+    const v = fields[f.f];
+    el.value = v == null ? '' : Array.isArray(v) ? v.join(', ') : String(v);
+    env.elements['ef_' + f.f.replace(/\s/g, '_')] = el;
+  }
+  input(env, 'Aliases').value = 'ΣΥΝ Α, ΣΥΝΕΡΓΕΙΟ ΑΛΦΑ';
+  input(env, 'Phone').value = '2';
+  await vm.runInContext("saveEntityRecord('workshops', 'recWORKSHOP01')", env.ctx);
+  const p = env.calls.patch[0];
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(p.fields)), { Aliases: ['ΣΥΝ Α', 'ΣΥΝΕΡΓΕΙΟ ΑΛΦΑ'], Phone: '2' });
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(p.opts)), { expect: { Phone: '1' } });
+});
+
+test('a stored « " » reaches the form whole (escaped), so an untouched name is not sent cut off', () => {
+  const env = load();
+  vm.runInContext(`buildEntityModal('clients', 'recCLIENT0001', ${JSON.stringify(Object.assign({}, CLIENT, { 'Company Name': 'UAB "RIVONA"', Adress: 'a < b & "c"' }))});`, env.ctx);
+  assert.ok(env.calls.modal, 'openModal was called');
+  assert.match(env.calls.modal, /value="UAB &quot;RIVONA&quot;"/);
+  assert.doesNotMatch(env.calls.modal, /value="UAB "/);
+});
+
+test('409 from a trigger (by «auto») does not blame another user', async () => {
+  const env = load(); openClient(env);
+  env.ctx.__answer = { conflict: true, fields: ['Phone'], by: 'auto', current: { Phone: '2310 999999' } };
+  input(env, 'Phone').value = '2310 111111';
+  await save(env);
+  assert.match(env.calls.warn[0].m, /άλλαξε αυτόματα/);
+  assert.doesNotMatch(env.calls.warn[0].m, /άλλος χρήστης/);
+});
+
+test('undo: an empty field is remembered as null, so «filled an empty field» can be undone (core/api.js)', () => {
+  const API = read('core/api.js');
+  assert.match(API, /_undoPrev\[fk\] = hit\.fields\[fk\] === undefined \? null : hit\.fields\[fk\];/);
 });
