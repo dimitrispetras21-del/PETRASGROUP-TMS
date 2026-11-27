@@ -140,14 +140,12 @@ test('atSafePatch with expect: success returns the record; other errors still th
   assert.ok(r2.err && r2.err.conflict === null, JSON.stringify(r2));
 });
 
-test('offline: the queued body drops _expect (a later replay would compare against a stale read)', async () => {
+test('offline (T8): a checked edit is refused at once, never queued to be replayed later without its check', async () => {
   const s = sandbox(answerV0(() => okRec()));
   s.ctx.navigator.onLine = false;
-  const r = await s.run(`atPatch('tblO', 'recTEST0001', ${JSON.stringify(FIELDS)}, { expect: ${JSON.stringify(SEEN)} })`);
-  assert.strictEqual(r._offline, true);
-  const q = s.queue();
-  assert.strictEqual(q.length, 1);
-  assert.deepStrictEqual(q[0].body, { fields: FIELDS });
+  const r = JSON.parse(await s.run(`atPatch('tblO', 'recTEST0001', ${JSON.stringify(FIELDS)}, { expect: ${JSON.stringify(SEEN)} }).then(() => '{"ok":true}', (e) => JSON.stringify({ ok: false, kind: e._kind }))`));
+  assert.deepStrictEqual(r, { ok: false, kind: 'offline' });
+  assert.strictEqual(s.queue().length, 0);
   assert.strictEqual(s.patches().length, 0);
 });
 

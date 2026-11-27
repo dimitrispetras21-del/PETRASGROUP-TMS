@@ -43,7 +43,9 @@ function sandbox(script) {
   vm.runInContext("showErrorToast = function (m, t) { __toasts.push((t || 'error') + ': ' + m); };", ctx);
   vm.runInContext('const __realLog = logError; logError = function (e, c) { __errors.push({ msg: e && e.message, ctx: c }); return __realLog(e, c); };', ctx);
   const queue = () => JSON.parse(store.get('tms_offline_queue') || '[]');
-  return { ctx, calls, toasts, errors, queue, run: (code) => vm.runInContext(code, ctx), online: () => Promise.all(onlineHandlers.map((f) => f())) };
+  // T8: nothing is queued any more; a change a browser stored before T8 is seeded straight into the queue.
+  const seed = (t, r, f) => vm.runInContext("(function (t, r, f) { _offlineQueue.push({ method: 'PATCH', url: _apiUrl('/v0/' + AT_BASE + '/' + t + '/' + r), body: { fields: f }, timestamp: Date.now(), recordId: r, req: _newReqId() }); _saveOfflineQueue(); })(" + [t, r, f].map((x) => JSON.stringify(x)).join(', ') + ")", ctx);
+  return { ctx, calls, toasts, errors, queue, seed, run: (code) => vm.runInContext(code, ctx), online: () => Promise.all(onlineHandlers.map((f) => f())) };
 }
 const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 const RULE = { error: { type: 'STOCK_RULE', code: 'piece_no_truck', message: 'Το κομμάτι δεν είναι σε φορτηγό' } };
@@ -56,9 +58,7 @@ async function replay(answer) {
     if (m === 'GET') return json(200, { id: 'recP1', fields: { Status: 'Pending' } });
     return answer();
   });
-  s.ctx.navigator.onLine = false;
-  const r = await s.run("atPatch('tblO', 'recP1', { Status: 'In Transit' })");
-  assert.strictEqual(r._offline, true);
+  s.seed('tblO', 'recP1', { Status: 'In Transit' });
   assert.strictEqual(s.queue().length, 1);
   s.toasts.length = 0;
   s.ctx.navigator.onLine = true;
@@ -128,9 +128,7 @@ test('mid-flush the stored queue still holds every change not yet decided', asyn
     seen = JSON.parse(s.ctx.localStorage.getItem('tms_offline_queue') || '[]').length;
     return json(200, { id: 'recP1', fields: {} });
   });
-  s.ctx.navigator.onLine = false;
-  await s.run("atPatch('tblO', 'recP1', { Status: 'In Transit' })");
-  s.ctx.navigator.onLine = true;
+  s.seed('tblO', 'recP1', { Status: 'In Transit' });
   await s.online();
   assert.strictEqual(seen, 1, 'the change was not in storage while it was being replayed');
   assert.strictEqual(s.queue().length, 0, 'sent → gone after the flush');
@@ -144,9 +142,7 @@ test('a 5xx stays queued, but after 3 replays it leaves loudly instead of waitin
     if (m === 'GET') return json(200, { id: 'recP1', fields: { Status: 'Pending' } });
     return json(500, { error: 'Failed to update record' });
   });
-  s.ctx.navigator.onLine = false;
-  await s.run("atPatch('tblO', 'recP1', { Status: 'In Transit' })");
-  s.ctx.navigator.onLine = true;
+  s.seed('tblO', 'recP1', { Status: 'In Transit' });
   await s.online(); assert.strictEqual(s.queue().length, 1, 'after 1 replay it must stay queued');
   await s.online(); assert.strictEqual(s.queue().length, 1, 'after 2 replays it must stay queued');
   s.toasts.length = 0;
@@ -161,3 +157,17 @@ test('a 4xx with a null body is refused once (no double count, no re-queue)', as
   assert.ok(s.toasts.some((t) => /ΑΠΟΡΡΙΦΘΗΚΕ/.test(t)));
   assert.match(flushLine(s), /synced 0, conflicts 0, failed 0, rejected 1/);
 });
+
+// T8 (owner 27/11/2026): a save made offline is refused at once and said — never queued, never sent later.
+for (const [what, call] of [['PATCH', "atPatch('tblO', 'recP1', { Status: 'In Transit' })"], ['POST', "atCreate('tblO', { Status: 'Pending' })"], ['DELETE', "atDelete('tblT', 'recT1')"]]) {
+  test(`T8 offline ${what}: refused now, in words; nothing queued, nothing sent`, async () => {
+    const s = sandbox(() => json(200, { id: 'recP1', fields: {} }));
+    s.ctx.navigator.onLine = false;
+    const r = JSON.parse(await s.run(`${call}.then(() => '{"ok":true}', (e) => JSON.stringify({ ok: false, kind: e._kind, nr: !!e._noRetry, m: e.message }))`));
+    assert.strictEqual(r.ok, false); assert.strictEqual(r.kind, 'offline'); assert.strictEqual(r.nr, true);
+    assert.match(r.m, /σύνδεση/);
+    assert.strictEqual(s.queue().length, 0, 'nothing queued');
+    assert.strictEqual(s.calls.filter((c) => c.url.includes('/v0/')).length, 0, 'nothing sent');
+    assert.ok(s.toasts.some((t) => /^warn: .*σύνδεση/.test(t)), s.toasts.join(' | '));
+  });
+}
